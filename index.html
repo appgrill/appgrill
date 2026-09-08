@@ -356,6 +356,7 @@ let state = {
   mes: new Date().getMonth(),
   anio: new Date().getFullYear(),
   tempFoto: "",       // foto capturada mientras el formulario de movimiento está abierto
+  tempMovDraft: { fecha:"", valor:"", medioPago:"", propina:"", categoria:"", trabajador:"", descripcion:"" },
   tempTrabajadores: [""], // nombres de trabajadores mientras el formulario de feria está abierto
   tempFeriaDraft: { nombre:"", encargado:"", fechaInicio:"", diasArmada:1, diasVenta:3 },
   lightboxPhoto: null,  // dataURL de la foto mostrada en el visor
@@ -554,15 +555,28 @@ function readFeriaDraftFromDOM(){
   });
 }
 
+function readMovDraftFromDOM(){
+  const g = (id)=>{ const el=document.getElementById(id); return el ? el.value : undefined; };
+  const d = state.tempMovDraft;
+  const fecha = g("mFecha"); if(fecha!==undefined) d.fecha = fecha;
+  const valor = g("mValor"); if(valor!==undefined) d.valor = valor;
+  const medioPago = g("mMedio"); if(medioPago!==undefined) d.medioPago = medioPago;
+  const propina = g("mPropina"); if(propina!==undefined) d.propina = propina;
+  const categoria = g("mCategoria"); if(categoria!==undefined) d.categoria = categoria;
+  const trabajador = g("mTrabajador"); if(trabajador!==undefined) d.trabajador = trabajador;
+  const descripcion = g("mDescripcion"); if(descripcion!==undefined) d.descripcion = descripcion;
+}
+
 function renderMovForm(feria){
   if(!state.showMovForm) return "";
   const tipo = state.movTipo;
   const needsMedio = tipo !== "Consignación";
   const needsTrabajador = tipo === "Pago a trabajador";
-  const needsCategoria = tipo === "Otro gasto" || tipo === "Pago a trabajador";
+  const needsCategoria = tipo === "Otro gasto";
   const needsFoto = tipo === "Factura Mercado" || tipo === "Gasolina";
   const needsPropina = tipo === "Venta";
   const trabajadores = getTrabajadores(feria);
+  const d = state.tempMovDraft;
 
   return `
   <div class="card" style="margin-bottom:18px;">
@@ -574,13 +588,13 @@ function renderMovForm(feria){
       ${TIPOS.map(t=>`<button class="pill ${t===tipo?'active':''}" data-tipo="${t}">${t}</button>`).join("")}
     </div>
     <div class="form-grid">
-      <label class="field"><span>Fecha</span><input id="mFecha" type="date" value="${todayISO()}" /></label>
-      <label class="field"><span>Valor</span><input id="mValor" type="number" min="0" placeholder="0" inputmode="numeric" /></label>
-      ${needsMedio ? `<label class="field"><span>Medio de pago</span><select id="mMedio">${MEDIOS_PAGO.map(m=>`<option>${m}</option>`).join("")}</select></label>` : ""}
-      ${needsPropina ? `<label class="field"><span>Propina (opcional)</span><input id="mPropina" type="number" min="0" placeholder="0" inputmode="numeric" /></label>` : ""}
-      ${needsTrabajador ? `<label class="field"><span>Trabajador</span><select id="mTrabajador">${trabajadores.map(w=>`<option value="${escapeHtml(w.nombre)}">${escapeHtml(w.nombre)}</option>`).join("")}</select></label>` : ""}
-      ${needsCategoria ? `<label class="field"><span>${tipo==="Pago a trabajador"?"Concepto del pago":"Categoría"}</span><select id="mCategoria">${CATEGORIAS.map(c=>`<option>${c}</option>`).join("")}</select></label>` : ""}
-      <label class="field"><span>Descripción (opcional)</span><input id="mDescripcion" placeholder="Nota corta" /></label>
+      <label class="field"><span>Fecha</span><input id="mFecha" type="date" value="${d.fecha || todayISO()}" /></label>
+      <label class="field"><span>Valor</span><input id="mValor" type="number" min="0" placeholder="0" inputmode="numeric" value="${escapeHtml(d.valor)}" /></label>
+      ${needsMedio ? `<label class="field"><span>Medio de pago</span><select id="mMedio">${MEDIOS_PAGO.map(m=>`<option ${m===d.medioPago?"selected":""}>${m}</option>`).join("")}</select></label>` : ""}
+      ${needsPropina ? `<label class="field"><span>Propina (opcional)</span><input id="mPropina" type="number" min="0" placeholder="0" inputmode="numeric" value="${escapeHtml(d.propina)}" /></label>` : ""}
+      ${needsTrabajador ? `<label class="field"><span>Trabajador</span><select id="mTrabajador">${trabajadores.map(w=>`<option value="${escapeHtml(w.nombre)}" ${w.nombre===d.trabajador?"selected":""}>${escapeHtml(w.nombre)}</option>`).join("")}</select></label>` : ""}
+      ${needsCategoria ? `<label class="field"><span>Categoría</span><select id="mCategoria">${CATEGORIAS.map(c=>`<option ${c===d.categoria?"selected":""}>${c}</option>`).join("")}</select></label>` : ""}
+      <label class="field"><span>Descripción (opcional)</span><input id="mDescripcion" placeholder="Nota corta" value="${escapeHtml(d.descripcion)}" /></label>
     </div>
     ${needsFoto ? renderPhotoCapture() : ""}
     <div class="row" style="justify-content:flex-end; margin-top:6px;">
@@ -695,7 +709,7 @@ function movRow(m){
   return `<div class="mov-row">
     <div class="mov-icon" style="background:${TONE[m.tipo]}22;">${ICONS[m.tipo]||"🧾"}</div>
     <div style="flex:1; min-width:0;">
-      <div class="mov-title">${m.tipo}${m.trabajador?` · ${escapeHtml(m.trabajador)}`:""}${m.categoria?` · ${escapeHtml(m.categoria)}`:""}</div>
+      <div class="mov-title">${m.tipo}${m.trabajador?` · ${escapeHtml(m.trabajador)}`:""}${(m.categoria && m.tipo!=="Pago a trabajador")?` · ${escapeHtml(m.categoria)}`:""}</div>
       <div class="mov-sub">${m.fecha}${m.medioPago?` · ${m.medioPago}`:""}${m.descripcion?` · ${escapeHtml(m.descripcion)}`:""}</div>
     </div>
     <div class="mov-value" style="color:${isIngreso?"var(--green)":"var(--red)"};">${isIngreso?"+":"-"}${fmt(m.valor)}</div>
@@ -908,28 +922,34 @@ function attachEvents(){
   };
 
   const btnNuevoMov = document.getElementById("btnNuevoMov");
-  if(btnNuevoMov) btnNuevoMov.onclick = ()=>{ state.showMovForm = true; state.movTipo = "Venta"; state.tempFoto = ""; render(); };
+  if(btnNuevoMov) btnNuevoMov.onclick = ()=>{
+    state.showMovForm = true; state.movTipo = "Venta"; state.tempFoto = "";
+    state.tempMovDraft = { fecha: todayISO(), valor:"", medioPago:"", propina:"", categoria:"", trabajador:"", descripcion:"" };
+    render();
+  };
   const closeMovForm = document.getElementById("closeMovForm");
   if(closeMovForm) closeMovForm.onclick = ()=>{ state.showMovForm = false; state.tempFoto = ""; render(); };
   const cancelMovForm = document.getElementById("cancelMovForm");
   if(cancelMovForm) cancelMovForm.onclick = ()=>{ state.showMovForm = false; state.tempFoto = ""; render(); };
   document.querySelectorAll("[data-tipo]").forEach(b=>{
-    b.onclick = ()=>{ state.movTipo = b.dataset.tipo; render(); };
+    b.onclick = ()=>{ readMovDraftFromDOM(); state.movTipo = b.dataset.tipo; render(); };
   });
 
   const mFotoInput = document.getElementById("mFotoInput");
   if(mFotoInput) mFotoInput.onchange = async (e)=>{
     const file = e.target.files[0];
     if(!file) return;
+    readMovDraftFromDOM();
     try{
       state.tempFoto = await compressImage(file);
       render();
     }catch(err){
       alert("No se pudo procesar la foto. Intenta de nuevo.");
+      render();
     }
   };
   const btnQuitarFoto = document.getElementById("btnQuitarFoto");
-  if(btnQuitarFoto) btnQuitarFoto.onclick = ()=>{ state.tempFoto = ""; render(); };
+  if(btnQuitarFoto) btnQuitarFoto.onclick = ()=>{ readMovDraftFromDOM(); state.tempFoto = ""; render(); };
 
   const saveMovForm = document.getElementById("saveMovForm");
   if(saveMovForm) saveMovForm.onclick = ()=>{
@@ -946,7 +966,7 @@ function attachEvents(){
       valor,
       medioPago: medioEl ? medioEl.value : "",
       propina: propinaEl ? (Number(propinaEl.value)||0) : 0,
-      categoria: categoriaEl ? categoriaEl.value : "",
+      categoria: categoriaEl ? categoriaEl.value : (tipo==="Pago a trabajador" ? "Sueldo" : ""),
       trabajador: trabajadorEl ? trabajadorEl.value : "",
       fotoFactura: state.tempFoto || "",
       descripcion: document.getElementById("mDescripcion").value,
@@ -954,6 +974,7 @@ function attachEvents(){
     state.movimientos.push(mov);
     state.showMovForm = false;
     state.tempFoto = "";
+    state.tempMovDraft = { fecha:"", valor:"", medioPago:"", propina:"", categoria:"", trabajador:"", descripcion:"" };
     persist(); render();
     if(mov.fotoFactura){
       const feria = state.ferias.find(f=>f.id===mov.feriaId);
