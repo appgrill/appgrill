@@ -10,6 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Control de Feria" />
 <title>Control de Feria</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
@@ -361,6 +362,7 @@ let state = {
   tempFeriaDraft: { nombre:"", encargado:"", fechaInicio:"", diasArmada:1, diasVenta:3 },
   lightboxPhoto: null,  // dataURL de la foto mostrada en el visor
   saveError: false,
+  exportDraft: { scope:"mes", desde:"", hasta:"", feriaId:"" },
 };
 if(state.ferias.length) state.feriaId = state.ferias[state.ferias.length-1].id;
 
@@ -762,6 +764,7 @@ function renderMensualTab(){
       </div>
     </div>`).join("")
   }
+  ${renderExportPanel()}
   `;
 }
 
@@ -1010,6 +1013,12 @@ function attachEvents(){
   const btnDriveConnect = document.getElementById("btnDriveConnect");
   if(btnDriveConnect) btnDriveConnect.onclick = ()=> connectDrive();
 
+  document.querySelectorAll("[data-exscope]").forEach(b=>{
+    b.onclick = ()=>{ readExportDraftFromDOM(); state.exportDraft.scope = b.dataset.exscope; render(); };
+  });
+  const btnExportarExcel = document.getElementById("btnExportarExcel");
+  if(btnExportarExcel) btnExportarExcel.onclick = ()=>{ readExportDraftFromDOM(); exportarExcel(); };
+
   const closeLightbox = document.getElementById("closeLightbox");
   if(closeLightbox) closeLightbox.onclick = ()=>{ state.lightboxPhoto = null; render(); };
   const lightboxOverlay = document.getElementById("lightboxOverlay");
@@ -1023,6 +1032,124 @@ function attachEvents(){
 /* =========================================================
    RESPALDO MANUAL (descargar / restaurar archivo JSON)
 ========================================================= */
+/* =========================================================
+   EXPORTAR A EXCEL (.xlsx) — por mes, rango de fechas, una feria, o todo
+========================================================= */
+function getMovsParaExportar(){
+  const d = state.exportDraft;
+  let ferias = state.ferias;
+  let movs = state.movimientos;
+
+  if(d.scope === "mes"){
+    ferias = state.ferias.filter(f=>{
+      const dt = new Date(f.fechaInicio+"T00:00:00");
+      return dt.getMonth()===state.mes && dt.getFullYear()===state.anio;
+    });
+    movs = state.movimientos.filter(m=>{
+      const dt = new Date(m.fecha+"T00:00:00");
+      return dt.getMonth()===state.mes && dt.getFullYear()===state.anio;
+    });
+  }else if(d.scope === "rango"){
+    const desde = d.desde || "0000-01-01";
+    const hasta = d.hasta || "9999-12-31";
+    movs = state.movimientos.filter(m=> m.fecha>=desde && m.fecha<=hasta);
+    ferias = state.ferias.filter(f=> f.fechaInicio<=hasta && (f.fechaCierre||f.fechaInicio)>=desde);
+  }else if(d.scope === "feria"){
+    ferias = state.ferias.filter(f=> f.id===d.feriaId);
+    movs = state.movimientos.filter(m=> m.feriaId===d.feriaId);
+  }
+  // "todo" usa todo tal cual
+
+  return { ferias, movs };
+}
+
+function exportarExcel(){
+  if(typeof XLSX === "undefined"){ alert("El generador de Excel todavía está cargando, espera un segundo e inténtalo de nuevo."); return; }
+  const { ferias, movs } = getMovsParaExportar();
+  if(!movs.length){ alert("No hay movimientos para exportar con ese filtro."); return; }
+
+  const feriaNombre = (id)=> (state.ferias.find(f=>f.id===id)||{}).nombre || "—";
+  const sorted = [...movs].sort((a,b)=> a.fecha < b.fecha ? -1 : 1);
+
+  const hojaMovs = [
+    ["Fecha","Feria","Tipo","Categoría / Concepto","Trabajador","Medio de pago","Valor","Propina","Descripción","Foto adjunta"],
+    ...sorted.map(m=>[
+      m.fecha, feriaNombre(m.feriaId), m.tipo, m.categoria||"", m.trabajador||"",
+      m.medioPago||"", Number(m.valor)||0, Number(m.propina)||0, m.descripcion||"",
+      m.fotoFactura ? "Sí" : "No",
+    ]),
+  ];
+
+  const resumenFerias = ferias.map(f=>{
+    const t = computeTotals(state.movimientos.filter(m=>m.feriaId===f.id));
+    return [f.nombre, f.fechaInicio, f.fechaCierre||"", getTrabajadores(f).length, t.ventas, t.gastos, t.utilidad, t.consignado, t.propinas];
+  });
+  const hojaResumen = [
+    ["Feria","Fecha inicio","Fecha cierre","Trabajadores","Ventas","Gastos","Utilidad","Consignado","Propinas"],
+    ...resumenFerias,
+  ];
+
+  const tGeneral = computeTotals(movs);
+  const hojaTotales = [
+    ["Concepto","Valor"],
+    ["Ventas", tGeneral.ventas],
+    ["Gastos", tGeneral.gastos],
+    ["Utilidad", tGeneral.utilidad],
+    ["Consignado", tGeneral.consignado],
+    ["Propinas", tGeneral.propinas],
+    ["Caja esperada (efectivo)", tGeneral.cajaEsperada],
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaTotales), "Totales");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaResumen), "Resumen por feria");
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaMovs), "Movimientos");
+
+  const d = state.exportDraft;
+  let filename = "control-feria";
+  if(d.scope==="mes") filename += `-${MESES[state.mes].toLowerCase()}-${state.anio}`;
+  else if(d.scope==="rango") filename += `-${d.desde||"inicio"}_${d.hasta||"fin"}`;
+  else if(d.scope==="feria") filename += `-${(feriaNombre(d.feriaId)||"feria").replace(/[^a-z0-9]+/gi,"-")}`;
+  else filename += "-todo";
+  filename += ".xlsx";
+
+  XLSX.writeFile(wb, filename);
+}
+
+function readExportDraftFromDOM(){
+  const g = (id)=>{ const el=document.getElementById(id); return el ? el.value : undefined; };
+  const d = state.exportDraft;
+  const desde = g("exDesde"); if(desde!==undefined) d.desde = desde;
+  const hasta = g("exHasta"); if(hasta!==undefined) d.hasta = hasta;
+  const feriaId = g("exFeria"); if(feriaId!==undefined) d.feriaId = feriaId;
+}
+
+function renderExportPanel(){
+  const d = state.exportDraft;
+  const scopes = [ ["mes","Por mes"], ["rango","Rango de fechas"], ["feria","Una feria"], ["todo","Todo"] ];
+  return `
+  <div class="card" style="margin-bottom:18px;">
+    <h3 style="font-size:15px;margin-bottom:10px;">⬇ Exportar a Excel</h3>
+    <div class="row" style="margin-bottom:12px;">
+      ${scopes.map(([key,label])=>`<button class="pill ${d.scope===key?'active':''}" data-exscope="${key}">${label}</button>`).join("")}
+    </div>
+    ${d.scope==="rango" ? `
+      <div class="form-grid" style="margin-top:0;">
+        <label class="field"><span>Desde</span><input id="exDesde" type="date" value="${d.desde}" /></label>
+        <label class="field"><span>Hasta</span><input id="exHasta" type="date" value="${d.hasta}" /></label>
+      </div>` : ""}
+    ${d.scope==="feria" ? `
+      <div class="field" style="margin-top:0;">
+        <span>Feria</span>
+        <select id="exFeria">
+          <option value="" disabled ${!d.feriaId?"selected":""}>Elige una feria…</option>
+          ${[...state.ferias].reverse().map(f=>`<option value="${f.id}" ${f.id===d.feriaId?"selected":""}>${escapeHtml(f.nombre)}</option>`).join("")}
+        </select>
+      </div>` : ""}
+    <button class="btn btn-solid" id="btnExportarExcel" style="margin-top:14px;">⬇ Descargar Excel</button>
+  </div>`;
+}
+
 function downloadBackup(){
   const data = { ferias: state.ferias, movimientos: state.movimientos, exportadoEl: new Date().toISOString() };
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
