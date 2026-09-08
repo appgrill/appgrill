@@ -305,11 +305,20 @@ async function driveUploadFactura(mov, feria){
       reader.readAsDataURL(blob);
     });
     const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: image/jpeg\r\nContent-Transfer-Encoding: base64\r\n\r\n${base64}\r\n--${boundary}--`;
-    await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+    const uploadRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink", {
       method: "POST",
       headers: { Authorization: "Bearer " + token, "Content-Type": `multipart/related; boundary=${boundary}` },
       body,
     });
+    const uploaded = await uploadRes.json();
+    if(uploaded && uploaded.webViewLink){
+      const target = state.movimientos.find(m=>m.id===mov.id);
+      if(target){
+        target.fotoDriveLink = uploaded.webViewLink;
+        saveData({ ferias: state.ferias, movimientos: state.movimientos });
+        render();
+      }
+    }
     setDriveStatus(`Foto subida a Drive (${mov.tipo}) ✓`);
   }catch(e){ setDriveStatus("No se pudo subir la foto a Drive"); }
 }
@@ -359,8 +368,9 @@ let state = {
   tempFoto: "",       // foto capturada mientras el formulario de movimiento está abierto
   tempMovDraft: { fecha:"", valor:"", medioPago:"", propina:"", categoria:"", trabajador:"", descripcion:"" },
   tempTrabajadores: [""], // nombres de trabajadores mientras el formulario de feria está abierto
-  tempFeriaDraft: { nombre:"", encargado:"", fechaInicio:"", diasArmada:1, diasVenta:3 },
+  tempFeriaDraft: { nombre:"", encargado:"", fechaInicio:"", fechaCierre:"", diasArmada:1, diasVenta:3 },
   lightboxPhoto: null,  // dataURL de la foto mostrada en el visor
+  lightboxMovId: null,
   saveError: false,
   exportDraft: { scope:"mes", desde:"", hasta:"", feriaId:"" },
 };
@@ -507,6 +517,7 @@ function renderFeriaSelector(){
 function renderFeriaForm(){
   if(!state.showFeriaForm) return "";
   const d = state.tempFeriaDraft;
+  const sugerido = addDays(d.fechaInicio || todayISO(), (Number(d.diasArmada)||0)+(Number(d.diasVenta)||1)-1);
   return `
   <div class="card" style="margin-bottom:18px;">
     <div class="modal-title-row">
@@ -516,10 +527,12 @@ function renderFeriaForm(){
     <div class="form-grid">
       <label class="field"><span>Nombre (único)</span><input id="fNombre" placeholder="Feria 06-09 sept" value="${escapeHtml(d.nombre)}" /></label>
       <label class="field"><span>Encargado</span><input id="fEncargado" placeholder="Tu nombre" value="${escapeHtml(d.encargado)}" /></label>
-      <label class="field"><span>Fecha de inicio</span><input id="fFechaInicio" type="date" value="${d.fechaInicio || todayISO()}" /></label>
+      <label class="field"><span>Desde (fecha de inicio)</span><input id="fFechaInicio" type="date" value="${d.fechaInicio || todayISO()}" /></label>
+      <label class="field"><span>Hasta (fecha de cierre)</span><input id="fFechaCierre" type="date" value="${d.fechaCierre || sugerido}" /></label>
       <label class="field"><span>Días de armada</span><input id="fDiasArmada" type="number" min="0" value="${d.diasArmada}" /></label>
       <label class="field"><span>Días de venta</span><input id="fDiasVenta" type="number" min="1" value="${d.diasVenta}" /></label>
     </div>
+    <p class="photo-hint" style="margin:-6px 0 4px;">"Hasta" define la fecha real de cierre de la feria — ajústala si no coincide con los días de armada + venta.</p>
     ${renderTrabajadoresFields()}
     <div class="row" style="justify-content:flex-end; margin-top:8px;">
       <button class="btn btn-ghost" id="cancelFeriaForm">Cancelar</button>
@@ -550,6 +563,7 @@ function readFeriaDraftFromDOM(){
   const nombre = g("fNombre"); if(nombre!==undefined) state.tempFeriaDraft.nombre = nombre;
   const encargado = g("fEncargado"); if(encargado!==undefined) state.tempFeriaDraft.encargado = encargado;
   const fechaInicio = g("fFechaInicio"); if(fechaInicio!==undefined) state.tempFeriaDraft.fechaInicio = fechaInicio;
+  const fechaCierre = g("fFechaCierre"); if(fechaCierre!==undefined) state.tempFeriaDraft.fechaCierre = fechaCierre;
   const diasArmada = g("fDiasArmada"); if(diasArmada!==undefined) state.tempFeriaDraft.diasArmada = diasArmada;
   const diasVenta = g("fDiasVenta"); if(diasVenta!==undefined) state.tempFeriaDraft.diasVenta = diasVenta;
   document.querySelectorAll(".trabajador-input").forEach(inp=>{
@@ -626,6 +640,7 @@ function renderPhotoCapture(){
 
 function renderLightbox(){
   if(!state.lightboxPhoto) return "";
+  const mov = state.movimientos.find(m=>m.id===state.lightboxMovId);
   return `
   <div class="overlay" id="lightboxOverlay">
     <div class="lightbox">
@@ -634,6 +649,7 @@ function renderLightbox(){
         <button class="close-btn" id="closeLightbox">✕</button>
       </div>
       <img src="${state.lightboxPhoto}" alt="Foto de factura" />
+      ${mov?.fotoDriveLink ? `<a href="${mov.fotoDriveLink}" target="_blank" rel="noopener" style="font-size:12px;color:var(--gold); display:inline-block; margin-bottom:8px;">☁ Ya está en Drive — abrir link</a>` : `<div class="photo-hint" style="margin-bottom:8px;">${drive.connected ? "Subiéndose a Drive… (o revisa tu conexión)" : "No conectado a Drive — solo guardada en esta tablet."}</div>`}
       <div class="row" style="justify-content:flex-end;">
         <button class="btn btn-ghost" id="btnDownloadPhoto">⬇ Descargar</button>
         <button class="btn btn-solid" id="btnSharePhoto">📤 Guardar en Drive / compartir</button>
@@ -876,7 +892,7 @@ function attachEvents(){
   const btnNuevaFeria = document.getElementById("btnNuevaFeria");
   if(btnNuevaFeria) btnNuevaFeria.onclick = ()=>{
     state.showFeriaForm = true;
-    state.tempFeriaDraft = { nombre:"", encargado:"", fechaInicio:todayISO(), diasArmada:1, diasVenta:3 };
+    state.tempFeriaDraft = { nombre:"", encargado:"", fechaInicio:todayISO(), fechaCierre:"", diasArmada:1, diasVenta:3 };
     state.tempTrabajadores = [""];
     render();
   };
@@ -908,13 +924,15 @@ function attachEvents(){
     const fechaInicio = state.tempFeriaDraft.fechaInicio || todayISO();
     const diasArmada = Number(state.tempFeriaDraft.diasArmada)||0;
     const diasVenta = Number(state.tempFeriaDraft.diasVenta)||1;
+    const fechaCierre = state.tempFeriaDraft.fechaCierre || addDays(fechaInicio, diasArmada+diasVenta-1);
+    if(fechaCierre < fechaInicio){ alert("La fecha “Hasta” no puede ser antes que “Desde”."); return; }
     const trabajadores = state.tempTrabajadores
       .map(n=>n.trim()).filter(Boolean)
       .map(nombreT=>({ id: uid(), nombre: nombreT }));
     const feria = {
       id: uid(), nombre, encargado: state.tempFeriaDraft.encargado,
       fechaInicio, diasArmada, diasVenta,
-      fechaCierre: addDays(fechaInicio, diasArmada+diasVenta-1),
+      fechaCierre,
       trabajadores,
       nTrabajadores: trabajadores.length || 1,
     };
@@ -997,7 +1015,7 @@ function attachEvents(){
   document.querySelectorAll("[data-photo]").forEach(b=>{
     b.onclick = ()=>{
       const mov = state.movimientos.find(m=>m.id===b.dataset.photo);
-      if(mov && mov.fotoFactura){ state.lightboxPhoto = mov.fotoFactura; render(); }
+      if(mov && mov.fotoFactura){ state.lightboxPhoto = mov.fotoFactura; state.lightboxMovId = mov.id; render(); }
     };
   });
 
@@ -1020,9 +1038,9 @@ function attachEvents(){
   if(btnExportarExcel) btnExportarExcel.onclick = ()=>{ readExportDraftFromDOM(); exportarExcel(); };
 
   const closeLightbox = document.getElementById("closeLightbox");
-  if(closeLightbox) closeLightbox.onclick = ()=>{ state.lightboxPhoto = null; render(); };
+  if(closeLightbox) closeLightbox.onclick = ()=>{ state.lightboxPhoto = null; state.lightboxMovId = null; render(); };
   const lightboxOverlay = document.getElementById("lightboxOverlay");
-  if(lightboxOverlay) lightboxOverlay.addEventListener("click", (e)=>{ if(e.target===lightboxOverlay){ state.lightboxPhoto = null; render(); } });
+  if(lightboxOverlay) lightboxOverlay.addEventListener("click", (e)=>{ if(e.target===lightboxOverlay){ state.lightboxPhoto = null; state.lightboxMovId = null; render(); } });
   const btnDownloadPhoto = document.getElementById("btnDownloadPhoto");
   if(btnDownloadPhoto) btnDownloadPhoto.onclick = ()=> downloadPhoto(state.lightboxPhoto);
   const btnSharePhoto = document.getElementById("btnSharePhoto");
@@ -1068,15 +1086,24 @@ function exportarExcel(){
   const { ferias, movs } = getMovsParaExportar();
   if(!movs.length){ alert("No hay movimientos para exportar con ese filtro."); return; }
 
+  const DIAS_SEMANA = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
+  const diaSemana = (fechaISO)=>{ try{ return DIAS_SEMANA[new Date(fechaISO+"T00:00:00").getDay()]; }catch(e){ return ""; } };
   const feriaNombre = (id)=> (state.ferias.find(f=>f.id===id)||{}).nombre || "—";
   const sorted = [...movs].sort((a,b)=> a.fecha < b.fecha ? -1 : 1);
 
+  const fotoValor = (m)=>{
+    if(m.fotoDriveLink) return m.fotoDriveLink;
+    if(m.fotoFactura) return "Sí (sin subir a Drive todavía)";
+    return "";
+  };
+
+  const hojaMovsHeader = ["Fecha","Día","Feria","Tipo","Categoría / Concepto","Trabajador","Medio de pago","Valor","Propina","Descripción","Foto (link de Drive)"];
   const hojaMovs = [
-    ["Fecha","Feria","Tipo","Categoría / Concepto","Trabajador","Medio de pago","Valor","Propina","Descripción","Foto adjunta"],
+    hojaMovsHeader,
     ...sorted.map(m=>[
-      m.fecha, feriaNombre(m.feriaId), m.tipo, m.categoria||"", m.trabajador||"",
+      m.fecha, diaSemana(m.fecha), feriaNombre(m.feriaId), m.tipo, m.categoria||"", m.trabajador||"",
       m.medioPago||"", Number(m.valor)||0, Number(m.propina)||0, m.descripcion||"",
-      m.fotoFactura ? "Sí" : "No",
+      fotoValor(m),
     ]),
   ];
 
@@ -1090,8 +1117,10 @@ function exportarExcel(){
   ];
 
   const tGeneral = computeTotals(movs);
+  const rangoTexto = sorted.length ? `${sorted[sorted.length-1].fecha} → ${sorted[0].fecha}` : "";
   const hojaTotales = [
     ["Concepto","Valor"],
+    ["Rango de fechas incluido", rangoTexto],
     ["Ventas", tGeneral.ventas],
     ["Gastos", tGeneral.gastos],
     ["Utilidad", tGeneral.utilidad],
@@ -1103,7 +1132,19 @@ function exportarExcel(){
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaTotales), "Totales");
   XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaResumen), "Resumen por feria");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaMovs), "Movimientos");
+  const wsMovs = XLSX.utils.aoa_to_sheet(hojaMovs);
+
+  // Convierte la columna de fotos en links reales cuando hay un link de Drive
+  const fotoColIdx = hojaMovsHeader.length - 1;
+  sorted.forEach((m, i)=>{
+    if(m.fotoDriveLink){
+      const addr = XLSX.utils.encode_cell({ r:i+1, c:fotoColIdx });
+      if(wsMovs[addr]) wsMovs[addr].l = { Target: m.fotoDriveLink, Tooltip: "Abrir foto en Google Drive" };
+    }
+  });
+  wsMovs['!cols'] = [{wch:11},{wch:11},{wch:18},{wch:18},{wch:20},{wch:12},{wch:13},{wch:10},{wch:9},{wch:26},{wch:36}];
+
+  XLSX.utils.book_append_sheet(wb, wsMovs, "Movimientos");
 
   const d = state.exportDraft;
   let filename = "control-feria";
