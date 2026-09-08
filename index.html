@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<meta name="theme-color" content="#15130E" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Control de Feria" />
+<title>Control de Feria</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
+
+  :root{
+    /* --- paleta refinada: mercado / feria, cálida y profesional --- */
+    --bg:#15130E; --bg-elevated:#1A1710;
+    --card:#1E1A12; --cardHover:#262015; --border:#352C1E; --borderSoft:#2A2317;
+    --text:#F3EEE1; --dim:#AB9C82; --faint:#6E6250;
+    --gold:#C9963F; --goldSoft:#E3C583; --goldDim:#8A6B34;
+    --green:#7FA872; --greenSoft:#7FA87222;
+    --red:#BD6B57; --redSoft:#BD6B5722;
+    --blue:#6E93A0; --blueSoft:#6E93A022;
+    --radius-sm:8px; --radius-md:12px; --radius-lg:18px;
+    --shadow-card: 0 1px 2px rgba(0,0,0,.24), 0 8px 20px -12px rgba(0,0,0,.5);
+    --shadow-pop: 0 12px 32px -8px rgba(0,0,0,.55);
+    --tap:48px;
+  }
+  *{box-sizing:border-box; font-family:'Inter',system-ui,sans-serif;}
+  html{-webkit-tap-highlight-color:transparent;}
+  body{margin:0; background:
+      radial-gradient(1200px 600px at 15% -10%, #241D11 0%, transparent 60%),
+      var(--bg);
+    color:var(--text); min-height:100vh; -webkit-font-smoothing:antialiased;}
+  h1,h2,h3{margin:0; font-family:'Space Grotesk',sans-serif; letter-spacing:-0.01em;}
+  .wrap{max-width:1080px; margin:0 auto; padding:20px 16px 80px;}
+  .row{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+  .between{justify-content:space-between;}
+  .header-title{font-size:17px; font-weight:600;}
+  .status{font-size:11.5px; color:var(--dim); display:flex; align-items:center; gap:5px;}
+  .status.saving{color:var(--gold);}
+  .icon-badge{background:linear-gradient(160deg,#3A2E17,#211A0E); border:1px solid var(--border); border-radius:12px; padding:9px 11px; display:flex; font-size:18px; box-shadow:var(--shadow-card);}
+  .tabs{display:flex; border:1px solid var(--border); border-radius:11px; overflow:hidden; background:var(--card);}
+  .tabs button{background:transparent; border:none; color:var(--dim); font-size:13px; padding:11px 16px; cursor:pointer; font-family:inherit; min-height:var(--tap); transition:background .15s,color .15s;}
+  .tabs button.active{background:var(--gold); color:#221807; font-weight:600;}
+  select, input, button, textarea{font-family:inherit;}
+  select, input{background:var(--card); border:1px solid var(--border); color:var(--text); border-radius:var(--radius-sm); padding:11px 12px; font-size:14.5px; outline:none; min-height:var(--tap); transition:border-color .15s;}
+  select:focus-visible, input:focus-visible, button:focus-visible{outline:2px solid var(--gold); outline-offset:2px;}
+  input[type="date"]{cursor:pointer;}
+  .btn{border-radius:var(--radius-sm); padding:12px 18px; font-size:13.5px; font-weight:600; cursor:pointer; border:1px solid transparent; display:inline-flex; align-items:center; justify-content:center; gap:7px; min-height:var(--tap); transition:filter .15s, background .15s, transform .05s;}
+  .btn:active{transform:scale(.98);}
+  .btn-solid{background:linear-gradient(180deg,var(--goldSoft),var(--gold)); color:#221807; border:none; box-shadow:0 4px 14px -4px rgba(201,150,63,.5);}
+  .btn-solid:hover{filter:brightness(1.05);}
+  .btn-ghost{background:var(--card); color:var(--dim); border:1px solid var(--border);}
+  .btn-ghost:hover{color:var(--text); border-color:var(--goldDim);}
+  .btn-danger{background:transparent; color:var(--red); border:none; cursor:pointer; min-height:40px; min-width:40px; border-radius:var(--radius-sm);}
+  .btn-danger:hover{background:var(--redSoft);}
+  .btn-block{width:100%;}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:18px; box-shadow:var(--shadow-card);}
+  .kpis{display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin:20px 0;}
+  @media(min-width:700px){.kpis{grid-template-columns:repeat(4,1fr);}}
+  .kpi-label{font-size:12px; color:var(--dim); display:flex; align-items:center; gap:7px; margin-bottom:8px;}
+  .kpi-value{font-size:24px; font-weight:600; font-family:'Space Grotesk',sans-serif; letter-spacing:-0.01em;}
+  .kpi-sub{font-size:11.5px; color:var(--dim); margin-top:5px;}
+  .grid3{display:grid; grid-template-columns:1fr; gap:14px; margin-bottom:20px;}
+  @media(min-width:860px){.grid3{grid-template-columns:1.1fr 1fr 1fr;}}
+  .field{display:flex; flex-direction:column; gap:5px; font-size:13.5px;}
+  .field span{color:var(--dim); font-size:12px;}
+  .form-grid{display:grid; grid-template-columns:1fr; gap:12px; margin:16px 0;}
+  @media(min-width:640px){.form-grid{grid-template-columns:1fr 1fr;}}
+  .pill{border-radius:999px; padding:10px 15px; font-size:12.5px; border:1px solid var(--border); background:var(--bg-elevated); color:var(--dim); cursor:pointer; min-height:40px; transition:background .15s,color .15s,border-color .15s;}
+  .pill.active{background:var(--gold); color:#221807; border-color:var(--gold); font-weight:600;}
+  .mov-row{display:flex; align-items:center; gap:12px; padding:12px 14px; border-radius:var(--radius-md); background:var(--cardHover); border:1px solid var(--borderSoft); margin-bottom:8px;}
+  .mov-icon{border-radius:12px; padding:9px; display:flex; font-size:16px;}
+  .mov-title{font-size:13.5px; font-weight:500;}
+  .mov-sub{font-size:11.5px; color:var(--dim); margin-top:1px;}
+  .mov-value{font-size:14px; font-weight:600; font-family:'Space Grotesk',sans-serif; white-space:nowrap;}
+  .mov-actions{display:flex; align-items:center; gap:2px;}
+  .mov-photo-btn{border:1px solid var(--border); background:var(--bg-elevated); border-radius:10px; width:40px; height:40px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; padding:0; overflow:hidden;}
+  .mov-photo-btn img{width:100%; height:100%; object-fit:cover;}
+  .empty{border:1px dashed var(--border); border-radius:var(--radius-md); padding:34px 20px; text-align:center; color:var(--faint); font-size:13.5px;}
+  .divider{height:1px; background:var(--border); margin:10px 0;}
+  .chart-wrap{position:relative; height:190px;}
+  .chart-center{position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; pointer-events:none;}
+  .modal-title-row{display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;}
+  .close-btn{background:var(--bg-elevated); border:1px solid var(--border); color:var(--dim); cursor:pointer; font-size:15px; border-radius:9px; width:36px; height:36px;}
+  .feria-list-row{display:flex; align-items:center; justify-content:space-between; padding:12px 14px; border-radius:var(--radius-md); background:var(--cardHover); border:1px solid var(--borderSoft); margin-bottom:8px;}
+  .toolbar-btns{display:flex; gap:8px;}
+  a.link-btn{color:var(--dim); text-decoration:none;}
+
+  /* --- captura de fotos --- */
+  .photo-capture{display:flex; flex-direction:column; gap:10px;}
+  .photo-btn-row{display:flex; align-items:center; gap:10px;}
+  .photo-thumb-preview{width:64px; height:64px; border-radius:10px; object-fit:cover; border:1px solid var(--border);}
+  .photo-input-label{display:inline-flex; align-items:center; gap:7px; cursor:pointer;}
+  .photo-hint{font-size:11px; color:var(--faint);}
+
+  /* --- lightbox de foto --- */
+  .overlay{position:fixed; inset:0; background:rgba(10,9,6,.72); backdrop-filter:blur(2px); display:flex; align-items:center; justify-content:center; padding:20px; z-index:50;}
+  .lightbox{background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:16px; max-width:520px; width:100%; box-shadow:var(--shadow-pop);}
+  .lightbox img{width:100%; max-height:60vh; object-fit:contain; border-radius:var(--radius-md); background:#000; margin:10px 0;}
+
+  ::-webkit-scrollbar{width:9px; height:9px;}
+  ::-webkit-scrollbar-thumb{background:var(--border); border-radius:99px;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<input type="file" id="restoreInput" accept="application/json" style="display:none" />
+
+<script>
+/* =========================================================
+   PWA: ícono + manifest para "Agregar a inicio" en tablet
+========================================================= */
+(function setupPWA(){
+  try{
+    const svgIcon = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192"><rect width="192" height="192" rx="40" fill="#15130E"/><rect x="6" y="6" width="180" height="180" rx="36" fill="none" stroke="#C9963F" stroke-width="4"/><text x="96" y="128" font-size="100" text-anchor="middle" font-family="sans-serif">🏪</text></svg>';
+    const iconUrl = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svgIcon)));
+    const manifest = {
+      name: "Control de Feria", short_name: "Feria", start_url: ".", display: "standalone",
+      background_color: "#15130E", theme_color: "#15130E",
+      icons: [{ src: iconUrl, sizes: "192x192", type: "image/svg+xml" }]
+    };
+    const manifestUrl = URL.createObjectURL(new Blob([JSON.stringify(manifest)], { type: "application/json" }));
+    const link = document.createElement("link");
+    link.rel = "manifest"; link.href = manifestUrl;
+    document.head.appendChild(link);
+    const appleIcon = document.createElement("link");
+    appleIcon.rel = "apple-touch-icon"; appleIcon.href = iconUrl;
+    document.head.appendChild(appleIcon);
+  }catch(e){ /* si el navegador no soporta algo de esto, la app sigue funcionando igual */ }
+})();
+
+/* =========================================================
+   GOOGLE DRIVE — configuración
+   Reemplaza este valor por el Client ID que crees en Google Cloud
+   Console (ver instrucciones aparte). Sin esto, el botón de conectar
+   no funciona, pero el resto de la app sigue funcionando normal.
+========================================================= */
+const GOOGLE_CLIENT_ID = "PEGA_AQUI_TU_CLIENT_ID.apps.googleusercontent.com";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_FOLDER_KEY = "control_feria_drive_folders_v1";
+
+const drive = {
+  tokenClient: null,
+  accessToken: null,
+  tokenExpiresAt: 0,
+  connected: false,
+  folders: null,   // { root, respaldos, mercado, gasolina, backupFileId }
+  status: "",       // texto corto para mostrar en pantalla
+  backupTimer: null,
+};
+
+function loadDriveFolders(){
+  try{ return JSON.parse(localStorage.getItem(DRIVE_FOLDER_KEY)) || null; }catch(e){ return null; }
+}
+function saveDriveFolders(f){
+  try{ localStorage.setItem(DRIVE_FOLDER_KEY, JSON.stringify(f)); }catch(e){}
+}
+drive.folders = loadDriveFolders();
+drive.connected = !!drive.folders; // si ya se configuró antes, se intenta reconectar solo
+
+function setDriveStatus(text){
+  drive.status = text;
+  const el = document.getElementById("driveStatus");
+  if(el) el.textContent = text;
+}
+
+function initGoogleClient(){
+  if(!window.google || !google.accounts || !google.accounts.oauth2) return; // script de Google aún no cargó
+  if(drive.tokenClient) return;
+  drive.tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: GOOGLE_CLIENT_ID,
+    scope: DRIVE_SCOPE,
+    callback: async (resp)=>{
+      if(resp.error){ setDriveStatus("No se pudo conectar con Google"); return; }
+      drive.accessToken = resp.access_token;
+      drive.tokenExpiresAt = Date.now() + (Number(resp.expires_in)||3300)*1000;
+      drive.connected = true;
+      setDriveStatus("Conectando…");
+      try{
+        await ensureDriveFolders();
+        setDriveStatus("Google Drive conectado ✓");
+        render();
+      }catch(e){ setDriveStatus("Conectado, pero falló al crear carpetas"); }
+    },
+  });
+  // Si ya se conectó antes en esta tablet, intenta renovar el permiso sin mostrar ventanas
+  if(drive.connected){
+    try{ drive.tokenClient.requestAccessToken({ prompt: "" }); }catch(e){}
+  }
+}
+
+function connectDrive(){
+  if(!drive.tokenClient){ setDriveStatus("Google todavía está cargando, espera un segundo e inténtalo de nuevo"); return; }
+  drive.tokenClient.requestAccessToken({ prompt: "consent" });
+}
+
+async function ensureToken(){
+  if(drive.accessToken && Date.now() < drive.tokenExpiresAt - 60000) return drive.accessToken;
+  return new Promise((resolve, reject)=>{
+    if(!drive.tokenClient){ reject(new Error("Google no está listo")); return; }
+    const prevCallback = drive.tokenClient.callback;
+    drive.tokenClient.callback = (resp)=>{
+      drive.tokenClient.callback = prevCallback;
+      if(resp.error){ reject(new Error(resp.error)); return; }
+      drive.accessToken = resp.access_token;
+      drive.tokenExpiresAt = Date.now() + (Number(resp.expires_in)||3300)*1000;
+      resolve(drive.accessToken);
+    };
+    drive.tokenClient.requestAccessToken({ prompt: "" });
+  });
+}
+
+async function driveFindOrCreateFolder(name, parentId){
+  const token = await ensureToken();
+  const q = encodeURIComponent(`name='${name.replace(/'/g,"\\'")}' and mimeType='application/vnd.google-apps.folder' and trashed=false` + (parentId ? ` and '${parentId}' in parents` : ""));
+  const listRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`, {
+    headers: { Authorization: "Bearer " + token },
+  });
+  const listData = await listRes.json();
+  if(listData.files && listData.files.length) return listData.files[0].id;
+  const metadata = { name, mimeType: "application/vnd.google-apps.folder" };
+  if(parentId) metadata.parents = [parentId];
+  const createRes = await fetch("https://www.googleapis.com/drive/v3/files", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify(metadata),
+  });
+  const created = await createRes.json();
+  return created.id;
+}
+
+async function ensureDriveFolders(){
+  if(drive.folders && drive.folders.root && drive.folders.mercado && drive.folders.gasolina && drive.folders.respaldos) return drive.folders;
+  const root = await driveFindOrCreateFolder("Will's Grill - Control de Feria", null);
+  const respaldos = await driveFindOrCreateFolder("Respaldos", root);
+  const mercado = await driveFindOrCreateFolder("Facturas Mercado", root);
+  const gasolina = await driveFindOrCreateFolder("Facturas Gasolina", root);
+  drive.folders = { root, respaldos, mercado, gasolina, backupFileId: drive.folders?.backupFileId || null };
+  saveDriveFolders(drive.folders);
+  return drive.folders;
+}
+
+/* Sube (o actualiza) el respaldo completo de datos como un .json en la carpeta "Respaldos" */
+async function driveUploadBackup(){
+  if(!drive.connected) return;
+  try{
+    await ensureDriveFolders();
+    const token = await ensureToken();
+    const data = { ferias: state.ferias, movimientos: state.movimientos, exportadoEl: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    if(drive.folders.backupFileId){
+      await fetch(`https://www.googleapis.com/upload/drive/v3/files/${drive.folders.backupFileId}?uploadType=media`, {
+        method: "PATCH",
+        headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+        body: blob,
+      });
+    }else{
+      const boundary = "cferia" + uid();
+      const metadata = { name: "respaldo-control-feria.json", parents: [drive.folders.respaldos] };
+      const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(data)}\r\n--${boundary}--`;
+      const createRes = await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, "Content-Type": `multipart/related; boundary=${boundary}` },
+        body,
+      });
+      const created = await createRes.json();
+      drive.folders.backupFileId = created.id;
+      saveDriveFolders(drive.folders);
+    }
+    setDriveStatus("Respaldo en Drive actualizado ✓");
+  }catch(e){ setDriveStatus("No se pudo respaldar en Drive (revisa conexión)"); }
+}
+
+/* Llama esto cada vez que cambian los datos: espera unos segundos de calma antes de subir,
+   para no disparar una subida por cada tecla o cambio. */
+function scheduleDriveBackup(){
+  if(!drive.connected) return;
+  clearTimeout(drive.backupTimer);
+  drive.backupTimer = setTimeout(driveUploadBackup, 2500);
+}
+
+/* Sube una foto de factura a la carpeta que corresponde según el tipo de movimiento */
+async function driveUploadFactura(mov, feria){
+  if(!drive.connected || !mov.fotoFactura) return;
+  const folderId = mov.tipo === "Factura Mercado" ? drive.folders?.mercado
+                  : mov.tipo === "Gasolina" ? drive.folders?.gasolina : null;
+  if(!folderId) return;
+  try{
+    await ensureDriveFolders();
+    const token = await ensureToken();
+    const blob = dataURLtoBlob(mov.fotoFactura);
+    const filename = `${mov.tipo}_${mov.fecha}_${(feria?.nombre||"feria").replace(/[^a-z0-9]+/gi,"-")}.jpg`;
+    const boundary = "cferia" + uid();
+    const metadata = { name: filename, parents: [folderId] };
+    const reader = new FileReader();
+    const base64 = await new Promise((resolve,reject)=>{
+      reader.onload = ()=> resolve(reader.result.split(",")[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: image/jpeg\r\nContent-Transfer-Encoding: base64\r\n\r\n${base64}\r\n--${boundary}--`;
+    await fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
+      method: "POST",
+      headers: { Authorization: "Bearer " + token, "Content-Type": `multipart/related; boundary=${boundary}` },
+      body,
+    });
+    setDriveStatus(`Foto subida a Drive (${mov.tipo}) ✓`);
+  }catch(e){ setDriveStatus("No se pudo subir la foto a Drive"); }
+}
+
+window.addEventListener("load", ()=>{
+  let tries = 0;
+  const tryInit = ()=>{
+    tries++;
+    initGoogleClient();
+    if(!drive.tokenClient && tries < 20) setTimeout(tryInit, 500);
+  };
+  setTimeout(tryInit, 300);
+});
+
+/* =========================================================
+   DATOS / PERSISTENCIA (localStorage — vive en ESTE navegador,
+   en ESTE archivo. Por eso el respaldo manual es tan importante.)
+========================================================= */
+const STORAGE_KEY = "control_feria_data_v1";
+const MEDIOS_PAGO = ["Efectivo", "Tarjeta"];
+const TIPOS = ["Venta", "Factura Mercado", "Gasolina", "Otro gasto", "Pago a trabajador", "Consignación"];
+const CATEGORIAS = ["Alquiler / stand", "Empaques y desechables", "Hielo", "Gas", "Imprevistos", "Sueldo", "Reembolso"];
+const MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+
+function loadData(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return { ferias: [], movimientos: [] };
+    const parsed = JSON.parse(raw);
+    return { ferias: parsed.ferias || [], movimientos: parsed.movimientos || [] };
+  }catch(e){ return { ferias: [], movimientos: [] }; }
+}
+function saveData(data){
+  try{ localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); return true; }
+  catch(e){ return false; }
+}
+
+let state = {
+  ...loadData(),
+  feriaId: null,
+  view: "feria",
+  showFeriaForm: false,
+  showMovForm: false,
+  movTipo: "Venta",
+  mes: new Date().getMonth(),
+  anio: new Date().getFullYear(),
+  tempFoto: "",       // foto capturada mientras el formulario de movimiento está abierto
+  tempTrabajadores: [""], // nombres de trabajadores mientras el formulario de feria está abierto
+  tempFeriaDraft: { nombre:"", encargado:"", fechaInicio:"", diasArmada:1, diasVenta:3 },
+  lightboxPhoto: null,  // dataURL de la foto mostrada en el visor
+  saveError: false,
+};
+if(state.ferias.length) state.feriaId = state.ferias[state.ferias.length-1].id;
+
+function persist(){
+  const ok = saveData({ ferias: state.ferias, movimientos: state.movimientos });
+  state.saveError = !ok;
+  flashSaved(ok);
+  scheduleDriveBackup();
+}
+function flashSaved(ok){
+  const el = document.getElementById("saveStatus");
+  if(!el) return;
+  if(!ok){
+    el.textContent = "No se pudo guardar (memoria llena) — haz un respaldo";
+    el.classList.remove("saving");
+    return;
+  }
+  el.textContent = "Guardado ✓";
+  el.classList.add("saving");
+  setTimeout(()=>{ if(el){ el.textContent = "Guardado automáticamente"; el.classList.remove("saving"); } }, 1200);
+}
+
+const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36);
+const todayISO = () => new Date().toISOString().slice(0,10);
+function addDays(iso, days){
+  const d = new Date(iso + "T00:00:00");
+  d.setDate(d.getDate() + Number(days));
+  return d.toISOString().slice(0,10);
+}
+const fmt = (n) => "$" + (Number(n)||0).toLocaleString("es-CO", {maximumFractionDigits:0});
+
+// Devuelve la lista de trabajadores de una feria. Si la feria es antigua y solo
+// tiene un número (nTrabajadores) en vez de nombres, genera nombres genéricos.
+function getTrabajadores(feria){
+  if(feria.trabajadores && feria.trabajadores.length) return feria.trabajadores;
+  const n = feria.nTrabajadores || 1;
+  return Array.from({length:n}, (_,i)=>({ id:"legacy_"+i, nombre:"Trabajador "+(i+1) }));
+}
+
+const ICONS = {
+  "Venta": "💵", "Factura Mercado": "🧺", "Gasolina": "⛽", "Otro gasto": "🧾",
+  "Pago a trabajador": "👥", "Consignación": "🏦",
+};
+const TONE = {
+  "Venta": "var(--green)", "Factura Mercado": "var(--red)", "Gasolina": "var(--red)",
+  "Otro gasto": "var(--red)", "Pago a trabajador": "var(--red)", "Consignación": "var(--blue)",
+};
+const CATEGORY_COLORS = {
+  "Mercado": "#C9963F", "Gasolina": "#BD6B57", "Otros gastos": "#6E93A0", "Pago a trabajadores": "#7FA872",
+};
+
+/* =========================================================
+   CÁLCULOS
+========================================================= */
+function computeTotals(movs){
+  const sum = (tipo, medio) => movs.filter(m => m.tipo===tipo && (!medio || m.medioPago===medio))
+    .reduce((a,m)=>a+(Number(m.valor)||0),0);
+  const ventas = sum("Venta");
+  const mercado = sum("Factura Mercado");
+  const gasolina = sum("Gasolina");
+  const otro = sum("Otro gasto");
+  const pagos = sum("Pago a trabajador");
+  const gastos = mercado+gasolina+otro+pagos;
+  const consignado = sum("Consignación");
+  const propinas = movs.filter(m=>m.tipo==="Venta").reduce((a,m)=>a+(Number(m.propina)||0),0);
+  const efectivoVentas = sum("Venta","Efectivo");
+  const tarjetaVentas = sum("Venta","Tarjeta");
+  const efectivoGastos = sum("Factura Mercado","Efectivo")+sum("Gasolina","Efectivo")+sum("Otro gasto","Efectivo")+sum("Pago a trabajador","Efectivo");
+  return {
+    ventas, mercado, gasolina, otro, pagos, gastos, consignado, propinas,
+    utilidad: ventas-gastos, efectivoVentas, tarjetaVentas,
+    cajaEsperada: efectivoVentas - efectivoGastos - consignado,
+  };
+}
+function categoryBreakdown(t){
+  return [
+    {name:"Mercado", value:t.mercado},
+    {name:"Gasolina", value:t.gasolina},
+    {name:"Otros gastos", value:t.otro},
+    {name:"Pago a trabajadores", value:t.pagos},
+  ].filter(d=>d.value>0);
+}
+
+/* =========================================================
+   RENDER
+========================================================= */
+let chartInstance = null;
+
+function render(){
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    ${renderHeader()}
+    ${state.view==="feria" ? renderFeriaTab() : renderMensualTab()}
+    ${renderLightbox()}
+  `;
+  attachEvents();
+  enhanceDateInputs();
+  if(state.view==="feria"){
+    const feria = state.ferias.find(f=>f.id===state.feriaId);
+    if(feria) drawDonut(feria);
+  }
+}
+
+function renderHeader(){
+  return `
+  <div class="row between" style="margin-bottom:20px;">
+    <div class="row">
+      <div class="icon-badge">🏪</div>
+      <div>
+        <div class="header-title">Control de Feria</div>
+        <div class="status" id="saveStatus">Guardado automáticamente</div>
+        <div class="status" id="driveStatus">${escapeHtml(drive.status || (drive.connected ? "Reconectando con Drive…" : "Google Drive no conectado"))}</div>
+      </div>
+    </div>
+    <div class="row">
+      <div class="toolbar-btns">
+        <button class="btn btn-ghost" id="btnBackup">⬇ Respaldo</button>
+        <button class="btn btn-ghost" id="btnRestore">⬆ Restaurar</button>
+        <button class="btn ${drive.connected? 'btn-ghost':'btn-solid'}" id="btnDriveConnect">${drive.connected? '☁ Drive conectado':'☁ Conectar Drive'}</button>
+      </div>
+      <div class="tabs">
+        <button class="${state.view==='feria'?'active':''}" data-view="feria">Feria</button>
+        <button class="${state.view==='mensual'?'active':''}" data-view="mensual">Resumen mensual</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderFeriaSelector(){
+  const opts = [...state.ferias].reverse().map(f=>`<option value="${f.id}" ${f.id===state.feriaId?"selected":""}>${escapeHtml(f.nombre)}</option>`).join("");
+  return `
+  <div class="row" style="margin-bottom:16px;">
+    📅
+    <select id="feriaSelect">
+      <option value="" disabled ${!state.feriaId?"selected":""}>Elige una feria…</option>
+      ${opts}
+    </select>
+    <button class="btn btn-ghost" id="btnNuevaFeria">+ Nueva feria</button>
+  </div>`;
+}
+
+function renderFeriaForm(){
+  if(!state.showFeriaForm) return "";
+  const d = state.tempFeriaDraft;
+  return `
+  <div class="card" style="margin-bottom:18px;">
+    <div class="modal-title-row">
+      <h3 style="font-size:15.5px;">Nueva feria</h3>
+      <button class="close-btn" id="closeFeriaForm">✕</button>
+    </div>
+    <div class="form-grid">
+      <label class="field"><span>Nombre (único)</span><input id="fNombre" placeholder="Feria 06-09 sept" value="${escapeHtml(d.nombre)}" /></label>
+      <label class="field"><span>Encargado</span><input id="fEncargado" placeholder="Tu nombre" value="${escapeHtml(d.encargado)}" /></label>
+      <label class="field"><span>Fecha de inicio</span><input id="fFechaInicio" type="date" value="${d.fechaInicio || todayISO()}" /></label>
+      <label class="field"><span>Días de armada</span><input id="fDiasArmada" type="number" min="0" value="${d.diasArmada}" /></label>
+      <label class="field"><span>Días de venta</span><input id="fDiasVenta" type="number" min="1" value="${d.diasVenta}" /></label>
+    </div>
+    ${renderTrabajadoresFields()}
+    <div class="row" style="justify-content:flex-end; margin-top:8px;">
+      <button class="btn btn-ghost" id="cancelFeriaForm">Cancelar</button>
+      <button class="btn btn-solid" id="saveFeriaForm">+ Crear feria</button>
+    </div>
+  </div>`;
+}
+
+function renderTrabajadoresFields(){
+  const list = state.tempTrabajadores.length ? state.tempTrabajadores : [""];
+  return `
+  <label class="field" style="margin-top:4px;">
+    <span>Trabajadores de esta feria</span>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${list.map((nombre,i)=>`
+        <div class="row" style="gap:8px;">
+          <input class="trabajador-input" data-idx="${i}" placeholder="Nombre del trabajador ${i+1}" value="${escapeHtml(nombre)}" style="flex:1;" />
+          ${list.length>1 ? `<button type="button" class="btn-danger" data-del-trabajador="${i}">🗑</button>` : ""}
+        </div>`).join("")}
+      <button type="button" class="btn btn-ghost" id="btnAgregarTrabajador" style="align-self:flex-start;">+ Agregar trabajador</button>
+    </div>
+    <span class="photo-hint">Los agregas aquí para poder elegirlos luego al registrar pagos y repartir propinas por nombre.</span>
+  </label>`;
+}
+
+function readFeriaDraftFromDOM(){
+  const g = (id)=>{ const el=document.getElementById(id); return el ? el.value : undefined; };
+  const nombre = g("fNombre"); if(nombre!==undefined) state.tempFeriaDraft.nombre = nombre;
+  const encargado = g("fEncargado"); if(encargado!==undefined) state.tempFeriaDraft.encargado = encargado;
+  const fechaInicio = g("fFechaInicio"); if(fechaInicio!==undefined) state.tempFeriaDraft.fechaInicio = fechaInicio;
+  const diasArmada = g("fDiasArmada"); if(diasArmada!==undefined) state.tempFeriaDraft.diasArmada = diasArmada;
+  const diasVenta = g("fDiasVenta"); if(diasVenta!==undefined) state.tempFeriaDraft.diasVenta = diasVenta;
+  document.querySelectorAll(".trabajador-input").forEach(inp=>{
+    state.tempTrabajadores[Number(inp.dataset.idx)] = inp.value;
+  });
+}
+
+function renderMovForm(feria){
+  if(!state.showMovForm) return "";
+  const tipo = state.movTipo;
+  const needsMedio = tipo !== "Consignación";
+  const needsTrabajador = tipo === "Pago a trabajador";
+  const needsCategoria = tipo === "Otro gasto" || tipo === "Pago a trabajador";
+  const needsFoto = tipo === "Factura Mercado" || tipo === "Gasolina";
+  const needsPropina = tipo === "Venta";
+  const trabajadores = getTrabajadores(feria);
+
+  return `
+  <div class="card" style="margin-bottom:18px;">
+    <div class="modal-title-row">
+      <h3 style="font-size:15.5px;">Registrar movimiento</h3>
+      <button class="close-btn" id="closeMovForm">✕</button>
+    </div>
+    <div class="row" style="margin:10px 0;">
+      ${TIPOS.map(t=>`<button class="pill ${t===tipo?'active':''}" data-tipo="${t}">${t}</button>`).join("")}
+    </div>
+    <div class="form-grid">
+      <label class="field"><span>Fecha</span><input id="mFecha" type="date" value="${todayISO()}" /></label>
+      <label class="field"><span>Valor</span><input id="mValor" type="number" min="0" placeholder="0" inputmode="numeric" /></label>
+      ${needsMedio ? `<label class="field"><span>Medio de pago</span><select id="mMedio">${MEDIOS_PAGO.map(m=>`<option>${m}</option>`).join("")}</select></label>` : ""}
+      ${needsPropina ? `<label class="field"><span>Propina (opcional)</span><input id="mPropina" type="number" min="0" placeholder="0" inputmode="numeric" /></label>` : ""}
+      ${needsTrabajador ? `<label class="field"><span>Trabajador</span><select id="mTrabajador">${trabajadores.map(w=>`<option value="${escapeHtml(w.nombre)}">${escapeHtml(w.nombre)}</option>`).join("")}</select></label>` : ""}
+      ${needsCategoria ? `<label class="field"><span>${tipo==="Pago a trabajador"?"Concepto del pago":"Categoría"}</span><select id="mCategoria">${CATEGORIAS.map(c=>`<option>${c}</option>`).join("")}</select></label>` : ""}
+      <label class="field"><span>Descripción (opcional)</span><input id="mDescripcion" placeholder="Nota corta" /></label>
+    </div>
+    ${needsFoto ? renderPhotoCapture() : ""}
+    <div class="row" style="justify-content:flex-end; margin-top:6px;">
+      <button class="btn btn-ghost" id="cancelMovForm">Cancelar</button>
+      <button class="btn btn-solid" id="saveMovForm">+ Guardar movimiento</button>
+    </div>
+  </div>`;
+}
+
+function renderPhotoCapture(){
+  return `
+  <label class="field" style="margin-top:2px;">
+    <span>Foto de la factura</span>
+    <div class="photo-capture">
+      <div class="photo-btn-row">
+        ${state.tempFoto ? `<img src="${state.tempFoto}" class="photo-thumb-preview" alt="Vista previa de la factura" />` : ""}
+        <label class="btn btn-ghost photo-input-label">
+          📷 ${state.tempFoto ? "Repetir foto" : "Tomar foto"}
+          <input type="file" accept="image/*" capture="environment" id="mFotoInput" style="display:none" />
+        </label>
+        ${state.tempFoto ? `<button type="button" class="btn btn-ghost" id="btnQuitarFoto">Quitar</button>` : ""}
+      </div>
+      <span class="photo-hint">Al tocar "Tomar foto" se abre la cámara de la tablet directamente.</span>
+    </div>
+  </label>`;
+}
+
+function renderLightbox(){
+  if(!state.lightboxPhoto) return "";
+  return `
+  <div class="overlay" id="lightboxOverlay">
+    <div class="lightbox">
+      <div class="modal-title-row">
+        <h3 style="font-size:15px;">Foto de la factura</h3>
+        <button class="close-btn" id="closeLightbox">✕</button>
+      </div>
+      <img src="${state.lightboxPhoto}" alt="Foto de factura" />
+      <div class="row" style="justify-content:flex-end;">
+        <button class="btn btn-ghost" id="btnDownloadPhoto">⬇ Descargar</button>
+        <button class="btn btn-solid" id="btnSharePhoto">📤 Guardar en Drive / compartir</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderFeriaTab(){
+  const feria = state.ferias.find(f=>f.id===state.feriaId);
+  let body = renderFeriaSelector() + renderFeriaForm();
+
+  if(!feria){
+    body += `<div class="empty">Crea tu primera feria para empezar a registrar movimientos.</div>`;
+    return body;
+  }
+
+  const movs = state.movimientos.filter(m=>m.feriaId===feria.id);
+  const t = computeTotals(movs);
+  const trabajadoresFeria = getTrabajadores(feria);
+  const propinaPersona = t.propinas / (trabajadoresFeria.length || 1);
+  const sorted = [...movs].sort((a,b)=> a.fecha < b.fecha ? 1 : -1);
+
+  body += `
+    <div class="kpis">
+      ${kpi("📈","Ventas", fmt(t.ventas), "var(--green)")}
+      ${kpi("📉","Gastos", fmt(t.gastos), "var(--red)")}
+      ${kpi("👛","Utilidad", fmt(t.utilidad), t.utilidad>=0?"var(--green)":"var(--red)", `Margen ${t.ventas?Math.round(t.utilidad/t.ventas*100):0}%`)}
+      ${kpi("💵","Caja esperada (efectivo)", fmt(t.cajaEsperada), "var(--gold)")}
+    </div>
+    <div class="grid3">
+      <div class="card"><div class="chart-wrap"><canvas id="donut"></canvas><div class="chart-center"><div style="font-size:11px;color:var(--dim);">Gastos</div><div style="font-weight:600;font-family:'Space Grotesk',sans-serif;">${fmt(t.gastos)}</div></div></div></div>
+      <div class="card">
+        <div style="font-size:11px;color:var(--dim);">Propinas</div>
+        <div style="font-size:20px;font-weight:600;font-family:'Space Grotesk',sans-serif;">${fmt(t.propinas)}</div>
+        <div style="font-size:11px;color:var(--dim);margin-top:2px;">${fmt(propinaPersona)} por persona · ${trabajadoresFeria.length} trabajador(es)</div>
+        ${t.propinas>0 ? `<div style="margin-top:8px; display:flex; flex-direction:column; gap:3px;">
+          ${trabajadoresFeria.map(w=>`<div class="row between" style="font-size:12px;"><span style="color:var(--dim);">${escapeHtml(w.nombre)}</span><span>${fmt(propinaPersona)}</span></div>`).join("")}
+        </div>` : ""}
+        <div class="divider"></div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:4px;">Ventas por medio de pago</div>
+        <div class="row between" style="font-size:13px;"><span style="color:var(--dim);">Efectivo</span><span>${fmt(t.efectivoVentas)}</span></div>
+        <div class="row between" style="font-size:13px;"><span style="color:var(--dim);">Tarjeta</span><span>${fmt(t.tarjetaVentas)}</span></div>
+      </div>
+      <div class="card">
+        <div style="font-size:11px;color:var(--dim);">Consignado al superior</div>
+        <div style="font-size:20px;font-weight:600;font-family:'Space Grotesk',sans-serif;">${fmt(t.consignado)}</div>
+        <div class="divider"></div>
+        <div style="font-size:11px;color:var(--dim);">Feria</div>
+        <div style="font-size:13px;">${feria.fechaInicio} → ${feria.fechaCierre}</div>
+        <div style="font-size:11px;color:var(--dim);">${feria.diasArmada} día(s) armada · ${feria.diasVenta} día(s) venta</div>
+      </div>
+    </div>
+    ${renderMovForm(feria)}
+    ${!state.showMovForm ? `<button class="btn btn-solid" id="btnNuevoMov" style="margin-bottom:18px;">+ Registrar movimiento</button>` : ""}
+    <div style="font-size:13px;color:var(--dim);margin-bottom:8px;">Movimientos (${sorted.length})</div>
+    ${sorted.length===0 ? `<div class="empty">Todavía no hay movimientos en esta feria.</div>` : ""}
+    <div style="max-height:440px; overflow-y:auto;">
+      ${sorted.map(movRow).join("")}
+    </div>
+  `;
+  return body;
+}
+
+function kpi(icon,label,value,color,sub){
+  return `<div class="card">
+    <div class="kpi-label">${icon} ${label}</div>
+    <div class="kpi-value" style="color:${color};">${value}</div>
+    ${sub?`<div class="kpi-sub">${sub}</div>`:""}
+  </div>`;
+}
+
+function movRow(m){
+  const isIngreso = m.tipo === "Venta";
+  return `<div class="mov-row">
+    <div class="mov-icon" style="background:${TONE[m.tipo]}22;">${ICONS[m.tipo]||"🧾"}</div>
+    <div style="flex:1; min-width:0;">
+      <div class="mov-title">${m.tipo}${m.trabajador?` · ${escapeHtml(m.trabajador)}`:""}${m.categoria?` · ${escapeHtml(m.categoria)}`:""}</div>
+      <div class="mov-sub">${m.fecha}${m.medioPago?` · ${m.medioPago}`:""}${m.descripcion?` · ${escapeHtml(m.descripcion)}`:""}</div>
+    </div>
+    <div class="mov-value" style="color:${isIngreso?"var(--green)":"var(--red)"};">${isIngreso?"+":"-"}${fmt(m.valor)}</div>
+    <div class="mov-actions">
+      ${m.fotoFactura ? `<button class="mov-photo-btn" data-photo="${m.id}" title="Ver foto"><img src="${m.fotoFactura}" alt="Foto factura"/></button>` : ""}
+      <button class="btn-danger" data-del="${m.id}">🗑</button>
+    </div>
+  </div>`;
+}
+
+function renderMensualTab(){
+  const ferias = state.ferias.filter(f=>{
+    const d = new Date(f.fechaInicio+"T00:00:00");
+    return d.getMonth()===state.mes && d.getFullYear()===state.anio;
+  });
+  const feriaIds = new Set(ferias.map(f=>f.id));
+  const movsDelMes = state.movimientos.filter(m=>{
+    const d = new Date(m.fecha+"T00:00:00");
+    return d.getMonth()===state.mes && d.getFullYear()===state.anio;
+  });
+  const t = computeTotals(movsDelMes);
+  const porFeria = ferias.map(f=>({feria:f, t: computeTotals(state.movimientos.filter(m=>m.feriaId===f.id))}));
+
+  const years = Array.from({length:5}, (_,i)=> new Date().getFullYear()-2+i);
+
+  return `
+  <div class="row" style="margin-bottom:16px;">
+    📆
+    <select id="mesSelect">${MESES.map((m,i)=>`<option value="${i}" ${i===state.mes?"selected":""}>${m}</option>`).join("")}</select>
+    <select id="anioSelect">${years.map(y=>`<option value="${y}" ${y===state.anio?"selected":""}>${y}</option>`).join("")}</select>
+    <span style="font-size:12px;color:var(--faint);">${porFeria.length} feria(s) este mes</span>
+  </div>
+  <div class="kpis">
+    ${kpi("📈","Ventas del mes", fmt(t.ventas), "var(--green)")}
+    ${kpi("📉","Gastos del mes", fmt(t.gastos), "var(--red)")}
+    ${kpi("👛","Utilidad del mes", fmt(t.utilidad), t.utilidad>=0?"var(--green)":"var(--red)")}
+    ${kpi("🏦","Consignado", fmt(t.consignado), "var(--gold)")}
+  </div>
+  ${porFeria.length===0 ? `<div class="empty">No hay ferias registradas este mes.</div>` :
+    porFeria.map(({feria,t})=>`
+    <div class="feria-list-row">
+      <div>
+        <div style="font-size:13px;">${escapeHtml(feria.nombre)}</div>
+        <div style="font-size:11px;color:var(--dim);">${feria.fechaInicio} → ${feria.fechaCierre}</div>
+      </div>
+      <div class="row" style="gap:16px;">
+        <span style="color:var(--green);font-size:13px;">${fmt(t.ventas)}</span>
+        <span style="color:var(--red);font-size:13px;">${fmt(t.gastos)}</span>
+        <span style="font-weight:600;font-size:13px;color:${t.utilidad>=0?"var(--green)":"var(--red)"};">${fmt(t.utilidad)}</span>
+      </div>
+    </div>`).join("")
+  }
+  `;
+}
+
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+function drawDonut(feria){
+  const ctx = document.getElementById("donut");
+  if(!ctx) return;
+  const movs = state.movimientos.filter(m=>m.feriaId===feria.id);
+  const t = computeTotals(movs);
+  const data = categoryBreakdown(t);
+  if(chartInstance){ chartInstance.destroy(); chartInstance = null; }
+  if(!data.length) return;
+  chartInstance = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels: data.map(d=>d.name),
+      datasets: [{ data: data.map(d=>d.value), backgroundColor: data.map(d=>CATEGORY_COLORS[d.name]), borderWidth: 0 }],
+    },
+    options: {
+      cutout: "68%",
+      plugins: { legend: { display:false }, tooltip: { callbacks: { label: (c)=> c.label+": "+fmt(c.raw) } } },
+      maintainAspectRatio: false,
+    },
+  });
+}
+
+/* =========================================================
+   FOTOS: compresión + visor + compartir/descargar
+========================================================= */
+function compressImage(file, maxSize){
+  maxSize = maxSize || 1280;
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=> reject(new Error("No se pudo leer la imagen"));
+    reader.onload = (ev)=>{
+      const img = new Image();
+      img.onerror = ()=> reject(new Error("No se pudo procesar la imagen"));
+      img.onload = ()=>{
+        let { width, height } = img;
+        if(width > height && width > maxSize){ height = Math.round(height * (maxSize/width)); width = maxSize; }
+        else if(height > maxSize){ width = Math.round(width * (maxSize/height)); height = maxSize; }
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        const c = canvas.getContext("2d");
+        c.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL("image/jpeg", 0.72));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function dataURLtoBlob(dataUrl){
+  const [meta, b64] = dataUrl.split(",");
+  const mime = meta.match(/:(.*?);/)[1];
+  const bin = atob(b64);
+  const arr = new Uint8Array(bin.length);
+  for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+async function sharePhoto(dataUrl){
+  const filename = "factura-" + todayISO() + ".jpg";
+  try{
+    const blob = dataURLtoBlob(dataUrl);
+    const file = new File([blob], filename, { type: "image/jpeg" });
+    if(navigator.canShare && navigator.canShare({ files:[file] })){
+      await navigator.share({ files:[file], title:"Foto de factura", text:"Control de Feria" });
+      return;
+    }
+  }catch(e){ /* si el usuario cancela el share, no hacemos nada más */ }
+  downloadPhoto(dataUrl);
+}
+function downloadPhoto(dataUrl){
+  const filename = "factura-" + todayISO() + ".jpg";
+  const a = document.createElement("a");
+  a.href = dataUrl; a.download = filename;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+/* =========================================================
+   CALENDARIO: forzar apertura del selector nativo al tocar
+========================================================= */
+function enhanceDateInputs(){
+  document.querySelectorAll('input[type="date"]').forEach(inp=>{
+    if(inp.dataset.enhanced) return;
+    inp.dataset.enhanced = "1";
+    const open = ()=>{ try{ if(typeof inp.showPicker === "function") inp.showPicker(); }catch(e){} };
+    inp.addEventListener("click", open);
+    inp.addEventListener("focus", open);
+  });
+}
+
+/* =========================================================
+   EVENTOS
+========================================================= */
+function attachEvents(){
+  document.querySelectorAll("[data-view]").forEach(b=>{
+    b.onclick = ()=>{ state.view = b.dataset.view; render(); };
+  });
+
+  const feriaSelect = document.getElementById("feriaSelect");
+  if(feriaSelect) feriaSelect.onchange = (e)=>{ state.feriaId = e.target.value; render(); };
+
+  const btnNuevaFeria = document.getElementById("btnNuevaFeria");
+  if(btnNuevaFeria) btnNuevaFeria.onclick = ()=>{
+    state.showFeriaForm = true;
+    state.tempFeriaDraft = { nombre:"", encargado:"", fechaInicio:todayISO(), diasArmada:1, diasVenta:3 };
+    state.tempTrabajadores = [""];
+    render();
+  };
+  const closeFeriaForm = document.getElementById("closeFeriaForm");
+  if(closeFeriaForm) closeFeriaForm.onclick = ()=>{ state.showFeriaForm = false; render(); };
+  const cancelFeriaForm = document.getElementById("cancelFeriaForm");
+  if(cancelFeriaForm) cancelFeriaForm.onclick = ()=>{ state.showFeriaForm = false; render(); };
+
+  const btnAgregarTrabajador = document.getElementById("btnAgregarTrabajador");
+  if(btnAgregarTrabajador) btnAgregarTrabajador.onclick = ()=>{
+    readFeriaDraftFromDOM();
+    state.tempTrabajadores.push("");
+    render();
+  };
+  document.querySelectorAll("[data-del-trabajador]").forEach(b=>{
+    b.onclick = ()=>{
+      readFeriaDraftFromDOM();
+      state.tempTrabajadores.splice(Number(b.dataset.delTrabajador), 1);
+      if(!state.tempTrabajadores.length) state.tempTrabajadores = [""];
+      render();
+    };
+  });
+
+  const saveFeriaForm = document.getElementById("saveFeriaForm");
+  if(saveFeriaForm) saveFeriaForm.onclick = ()=>{
+    readFeriaDraftFromDOM();
+    const nombre = state.tempFeriaDraft.nombre.trim();
+    if(!nombre) return;
+    const fechaInicio = state.tempFeriaDraft.fechaInicio || todayISO();
+    const diasArmada = Number(state.tempFeriaDraft.diasArmada)||0;
+    const diasVenta = Number(state.tempFeriaDraft.diasVenta)||1;
+    const trabajadores = state.tempTrabajadores
+      .map(n=>n.trim()).filter(Boolean)
+      .map(nombreT=>({ id: uid(), nombre: nombreT }));
+    const feria = {
+      id: uid(), nombre, encargado: state.tempFeriaDraft.encargado,
+      fechaInicio, diasArmada, diasVenta,
+      fechaCierre: addDays(fechaInicio, diasArmada+diasVenta-1),
+      trabajadores,
+      nTrabajadores: trabajadores.length || 1,
+    };
+    state.ferias.push(feria);
+    state.feriaId = feria.id;
+    state.showFeriaForm = false;
+    persist(); render();
+  };
+
+  const btnNuevoMov = document.getElementById("btnNuevoMov");
+  if(btnNuevoMov) btnNuevoMov.onclick = ()=>{ state.showMovForm = true; state.movTipo = "Venta"; state.tempFoto = ""; render(); };
+  const closeMovForm = document.getElementById("closeMovForm");
+  if(closeMovForm) closeMovForm.onclick = ()=>{ state.showMovForm = false; state.tempFoto = ""; render(); };
+  const cancelMovForm = document.getElementById("cancelMovForm");
+  if(cancelMovForm) cancelMovForm.onclick = ()=>{ state.showMovForm = false; state.tempFoto = ""; render(); };
+  document.querySelectorAll("[data-tipo]").forEach(b=>{
+    b.onclick = ()=>{ state.movTipo = b.dataset.tipo; render(); };
+  });
+
+  const mFotoInput = document.getElementById("mFotoInput");
+  if(mFotoInput) mFotoInput.onchange = async (e)=>{
+    const file = e.target.files[0];
+    if(!file) return;
+    try{
+      state.tempFoto = await compressImage(file);
+      render();
+    }catch(err){
+      alert("No se pudo procesar la foto. Intenta de nuevo.");
+    }
+  };
+  const btnQuitarFoto = document.getElementById("btnQuitarFoto");
+  if(btnQuitarFoto) btnQuitarFoto.onclick = ()=>{ state.tempFoto = ""; render(); };
+
+  const saveMovForm = document.getElementById("saveMovForm");
+  if(saveMovForm) saveMovForm.onclick = ()=>{
+    const valor = Number(document.getElementById("mValor").value);
+    if(!valor || valor<=0) return;
+    const tipo = state.movTipo;
+    const medioEl = document.getElementById("mMedio");
+    const propinaEl = document.getElementById("mPropina");
+    const categoriaEl = document.getElementById("mCategoria");
+    const trabajadorEl = document.getElementById("mTrabajador");
+    const mov = {
+      id: uid(), feriaId: state.feriaId, tipo,
+      fecha: document.getElementById("mFecha").value || todayISO(),
+      valor,
+      medioPago: medioEl ? medioEl.value : "",
+      propina: propinaEl ? (Number(propinaEl.value)||0) : 0,
+      categoria: categoriaEl ? categoriaEl.value : "",
+      trabajador: trabajadorEl ? trabajadorEl.value : "",
+      fotoFactura: state.tempFoto || "",
+      descripcion: document.getElementById("mDescripcion").value,
+    };
+    state.movimientos.push(mov);
+    state.showMovForm = false;
+    state.tempFoto = "";
+    persist(); render();
+    if(mov.fotoFactura){
+      const feria = state.ferias.find(f=>f.id===mov.feriaId);
+      driveUploadFactura(mov, feria);
+    }
+  };
+
+  document.querySelectorAll("[data-del]").forEach(b=>{
+    b.onclick = ()=>{
+      const ok = confirm("¿Eliminar este movimiento?");
+      if(!ok) return;
+      state.movimientos = state.movimientos.filter(m=>m.id!==b.dataset.del);
+      persist(); render();
+    };
+  });
+
+  document.querySelectorAll("[data-photo]").forEach(b=>{
+    b.onclick = ()=>{
+      const mov = state.movimientos.find(m=>m.id===b.dataset.photo);
+      if(mov && mov.fotoFactura){ state.lightboxPhoto = mov.fotoFactura; render(); }
+    };
+  });
+
+  const mesSelect = document.getElementById("mesSelect");
+  if(mesSelect) mesSelect.onchange = (e)=>{ state.mes = Number(e.target.value); render(); };
+  const anioSelect = document.getElementById("anioSelect");
+  if(anioSelect) anioSelect.onchange = (e)=>{ state.anio = Number(e.target.value); render(); };
+
+  const btnBackup = document.getElementById("btnBackup");
+  if(btnBackup) btnBackup.onclick = downloadBackup;
+  const btnRestore = document.getElementById("btnRestore");
+  if(btnRestore) btnRestore.onclick = ()=> document.getElementById("restoreInput").click();
+  const btnDriveConnect = document.getElementById("btnDriveConnect");
+  if(btnDriveConnect) btnDriveConnect.onclick = ()=> connectDrive();
+
+  const closeLightbox = document.getElementById("closeLightbox");
+  if(closeLightbox) closeLightbox.onclick = ()=>{ state.lightboxPhoto = null; render(); };
+  const lightboxOverlay = document.getElementById("lightboxOverlay");
+  if(lightboxOverlay) lightboxOverlay.addEventListener("click", (e)=>{ if(e.target===lightboxOverlay){ state.lightboxPhoto = null; render(); } });
+  const btnDownloadPhoto = document.getElementById("btnDownloadPhoto");
+  if(btnDownloadPhoto) btnDownloadPhoto.onclick = ()=> downloadPhoto(state.lightboxPhoto);
+  const btnSharePhoto = document.getElementById("btnSharePhoto");
+  if(btnSharePhoto) btnSharePhoto.onclick = ()=> sharePhoto(state.lightboxPhoto);
+}
+
+/* =========================================================
+   RESPALDO MANUAL (descargar / restaurar archivo JSON)
+========================================================= */
+function downloadBackup(){
+  const data = { ferias: state.ferias, movimientos: state.movimientos, exportadoEl: new Date().toISOString() };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  const fecha = todayISO();
+  a.href = url;
+  a.download = `respaldo-control-feria-${fecha}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+document.getElementById("restoreInput").addEventListener("change", (e)=>{
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      const data = JSON.parse(ev.target.result);
+      if(!Array.isArray(data.ferias) || !Array.isArray(data.movimientos)){
+        alert("Ese archivo no tiene el formato correcto de un respaldo de Control de Feria.");
+        return;
+      }
+      const ok = confirm("Esto va a REEMPLAZAR los datos que tienes abiertos ahora mismo por los del respaldo. ¿Continuar?");
+      if(!ok) return;
+      state.ferias = data.ferias;
+      state.movimientos = data.movimientos;
+      state.feriaId = data.ferias.length ? data.ferias[data.ferias.length-1].id : null;
+      persist(); render();
+    }catch(err){
+      alert("No se pudo leer el archivo. Asegúrate de elegir un respaldo (.json) generado por esta misma app.");
+    }
+  };
+  reader.readAsText(file);
+  e.target.value = "";
+});
+
+render();
+</script>
+</body>
+</html>
