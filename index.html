@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="Control de Feria" />
 <title>Control de Feria</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&display=swap');
@@ -58,6 +58,8 @@
   .btn-ghost:hover{color:var(--text); border-color:var(--goldDim);}
   .btn-danger{background:transparent; color:var(--red); border:none; cursor:pointer; min-height:40px; min-width:40px; border-radius:var(--radius-sm);}
   .btn-danger:hover{background:var(--redSoft);}
+  .btn-edit{background:transparent; color:var(--gold); border:none; cursor:pointer; min-height:40px; min-width:40px; border-radius:var(--radius-sm); font-size:15px;}
+  .btn-edit:hover{background:rgba(201,150,63,.15);}
   .btn-block{width:100%;}
   .card{background:var(--card); border:1px solid var(--border); border-radius:var(--radius-lg); padding:18px; box-shadow:var(--shadow-card);}
   .kpis{display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin:20px 0;}
@@ -362,6 +364,7 @@ let state = {
   view: "feria",
   showFeriaForm: false,
   showMovForm: false,
+  editingMovId: null,   // id del movimiento que se está editando (null = registrando uno nuevo)
   movTipo: "Venta",
   mes: new Date().getMonth(),
   anio: new Date().getFullYear(),
@@ -586,6 +589,7 @@ function readMovDraftFromDOM(){
 function renderMovForm(feria){
   if(!state.showMovForm) return "";
   const tipo = state.movTipo;
+  const isEditing = !!state.editingMovId;
   const needsMedio = tipo !== "Consignación";
   const needsTrabajador = tipo === "Pago a trabajador";
   const needsCategoria = tipo === "Otro gasto";
@@ -597,7 +601,7 @@ function renderMovForm(feria){
   return `
   <div class="card" style="margin-bottom:18px;">
     <div class="modal-title-row">
-      <h3 style="font-size:15.5px;">Registrar movimiento</h3>
+      <h3 style="font-size:15.5px;">${isEditing ? "Editar movimiento" : "Registrar movimiento"}</h3>
       <button class="close-btn" id="closeMovForm">✕</button>
     </div>
     <div class="row" style="margin:10px 0;">
@@ -615,7 +619,7 @@ function renderMovForm(feria){
     ${needsFoto ? renderPhotoCapture() : ""}
     <div class="row" style="justify-content:flex-end; margin-top:6px;">
       <button class="btn btn-ghost" id="cancelMovForm">Cancelar</button>
-      <button class="btn btn-solid" id="saveMovForm">+ Guardar movimiento</button>
+      <button class="btn btn-solid" id="saveMovForm">${isEditing ? "✓ Guardar cambios" : "+ Guardar movimiento"}</button>
     </div>
   </div>`;
 }
@@ -733,7 +737,8 @@ function movRow(m){
     <div class="mov-value" style="color:${isIngreso?"var(--green)":"var(--red)"};">${isIngreso?"+":"-"}${fmt(m.valor)}</div>
     <div class="mov-actions">
       ${m.fotoFactura ? `<button class="mov-photo-btn" data-photo="${m.id}" title="Ver foto"><img src="${m.fotoFactura}" alt="Foto factura"/></button>` : ""}
-      <button class="btn-danger" data-del="${m.id}">🗑</button>
+      <button class="btn-edit" data-edit="${m.id}" title="Editar">✏️</button>
+      <button class="btn-danger" data-del="${m.id}" title="Eliminar">🗑</button>
     </div>
   </div>`;
 }
@@ -944,14 +949,14 @@ function attachEvents(){
 
   const btnNuevoMov = document.getElementById("btnNuevoMov");
   if(btnNuevoMov) btnNuevoMov.onclick = ()=>{
-    state.showMovForm = true; state.movTipo = "Venta"; state.tempFoto = "";
+    state.showMovForm = true; state.editingMovId = null; state.movTipo = "Venta"; state.tempFoto = "";
     state.tempMovDraft = { fecha: todayISO(), valor:"", medioPago:"", propina:"", categoria:"", trabajador:"", descripcion:"" };
     render();
   };
   const closeMovForm = document.getElementById("closeMovForm");
-  if(closeMovForm) closeMovForm.onclick = ()=>{ state.showMovForm = false; state.tempFoto = ""; render(); };
+  if(closeMovForm) closeMovForm.onclick = ()=>{ state.showMovForm = false; state.editingMovId = null; state.tempFoto = ""; render(); };
   const cancelMovForm = document.getElementById("cancelMovForm");
-  if(cancelMovForm) cancelMovForm.onclick = ()=>{ state.showMovForm = false; state.tempFoto = ""; render(); };
+  if(cancelMovForm) cancelMovForm.onclick = ()=>{ state.showMovForm = false; state.editingMovId = null; state.tempFoto = ""; render(); };
   document.querySelectorAll("[data-tipo]").forEach(b=>{
     b.onclick = ()=>{ readMovDraftFromDOM(); state.movTipo = b.dataset.tipo; render(); };
   });
@@ -972,6 +977,27 @@ function attachEvents(){
   const btnQuitarFoto = document.getElementById("btnQuitarFoto");
   if(btnQuitarFoto) btnQuitarFoto.onclick = ()=>{ readMovDraftFromDOM(); state.tempFoto = ""; render(); };
 
+  document.querySelectorAll("[data-edit]").forEach(b=>{
+    b.onclick = ()=>{
+      const mov = state.movimientos.find(m=>m.id===b.dataset.edit);
+      if(!mov) return;
+      state.editingMovId = mov.id;
+      state.movTipo = mov.tipo;
+      state.tempFoto = mov.fotoFactura || "";
+      state.tempMovDraft = {
+        fecha: mov.fecha || todayISO(),
+        valor: (mov.valor!==undefined && mov.valor!==null) ? String(mov.valor) : "",
+        medioPago: mov.medioPago || "",
+        propina: mov.propina ? String(mov.propina) : "",
+        categoria: mov.categoria || "",
+        trabajador: mov.trabajador || "",
+        descripcion: mov.descripcion || "",
+      };
+      state.showMovForm = true;
+      render();
+    };
+  });
+
   const saveMovForm = document.getElementById("saveMovForm");
   if(saveMovForm) saveMovForm.onclick = ()=>{
     const valor = Number(document.getElementById("mValor").value);
@@ -981,16 +1007,41 @@ function attachEvents(){
     const propinaEl = document.getElementById("mPropina");
     const categoriaEl = document.getElementById("mCategoria");
     const trabajadorEl = document.getElementById("mTrabajador");
+    const fecha = document.getElementById("mFecha").value || todayISO();
+    const medioPago = medioEl ? medioEl.value : "";
+    const propina = propinaEl ? (Number(propinaEl.value)||0) : 0;
+    const categoria = categoriaEl ? categoriaEl.value : (tipo==="Pago a trabajador" ? "Sueldo" : "");
+    const trabajador = trabajadorEl ? trabajadorEl.value : "";
+    const descripcion = document.getElementById("mDescripcion").value;
+    const fotoFactura = state.tempFoto || "";
+
+    if(state.editingMovId){
+      const idx = state.movimientos.findIndex(m=>m.id===state.editingMovId);
+      if(idx===-1){ state.editingMovId=null; state.showMovForm=false; render(); return; }
+      const prev = state.movimientos[idx];
+      const fotoCambio = (prev.fotoFactura||"") !== fotoFactura;
+      const actualizado = {
+        ...prev,
+        tipo, fecha, valor, medioPago, propina, categoria, trabajador, descripcion,
+        fotoFactura,
+        fotoDriveLink: fotoCambio ? "" : prev.fotoDriveLink,
+      };
+      state.movimientos[idx] = actualizado;
+      state.showMovForm = false;
+      state.editingMovId = null;
+      state.tempFoto = "";
+      state.tempMovDraft = { fecha:"", valor:"", medioPago:"", propina:"", categoria:"", trabajador:"", descripcion:"" };
+      persist(); render();
+      if(fotoCambio && actualizado.fotoFactura){
+        const feria = state.ferias.find(f=>f.id===actualizado.feriaId);
+        driveUploadFactura(actualizado, feria);
+      }
+      return;
+    }
+
     const mov = {
-      id: uid(), feriaId: state.feriaId, tipo,
-      fecha: document.getElementById("mFecha").value || todayISO(),
-      valor,
-      medioPago: medioEl ? medioEl.value : "",
-      propina: propinaEl ? (Number(propinaEl.value)||0) : 0,
-      categoria: categoriaEl ? categoriaEl.value : (tipo==="Pago a trabajador" ? "Sueldo" : ""),
-      trabajador: trabajadorEl ? trabajadorEl.value : "",
-      fotoFactura: state.tempFoto || "",
-      descripcion: document.getElementById("mDescripcion").value,
+      id: uid(), feriaId: state.feriaId, tipo, fecha, valor, medioPago, propina, categoria, trabajador,
+      fotoFactura, descripcion,
     };
     state.movimientos.push(mov);
     state.showMovForm = false;
@@ -1035,7 +1086,7 @@ function attachEvents(){
     b.onclick = ()=>{ readExportDraftFromDOM(); state.exportDraft.scope = b.dataset.exscope; render(); };
   });
   const btnExportarExcel = document.getElementById("btnExportarExcel");
-  if(btnExportarExcel) btnExportarExcel.onclick = ()=>{ readExportDraftFromDOM(); exportarExcel(); };
+  if(btnExportarExcel) btnExportarExcel.onclick = async ()=>{ readExportDraftFromDOM(); await exportarExcel(); };
 
   const closeLightbox = document.getElementById("closeLightbox");
   if(closeLightbox) closeLightbox.onclick = ()=>{ state.lightboxPhoto = null; state.lightboxMovId = null; render(); };
@@ -1081,70 +1132,289 @@ function getMovsParaExportar(){
   return { ferias, movs };
 }
 
-function exportarExcel(){
-  if(typeof XLSX === "undefined"){ alert("El generador de Excel todavía está cargando, espera un segundo e inténtalo de nuevo."); return; }
+/* =========================================================
+   ESTILOS PARA EL EXCEL EXPORTADO (paleta del app, vía ExcelJS)
+========================================================= */
+const XLS_MONEY_FMT = '"$"#,##0';
+const XLS_GOLD="FFC9963F", XLS_GOLD_SOFT="FFE3C583", XLS_DARK="FF2A2317", XLS_DARK_TEXT="FF221807",
+      XLS_DIM_TEXT="FF8A7F68", XLS_ROW_ALT="FFF7F0E3", XLS_ROW_BASE="FFFFFFFF", XLS_BORDER_SOFT="FFE3D9C2";
+const XLS_TABCOLORS = {
+  RESUMEN: XLS_GOLD, FERIAS: XLS_GOLD, VENTAS: "FF7FA872", MERCADO: "FFBD6B57", GASOLINA: "FFBD6B57",
+  "OTROS GASTOS": "FFBD6B57", PROPINAS: XLS_GOLD, PAGOS: "FFBD6B57", CONSIGNACIONES: "FF6E93A0", INVENTARIO: "FF8A6B34",
+};
+
+function xlsStyleTitleRow(ws, rowNum, colCount){
+  const span = Math.max(colCount,2);
+  ws.mergeCells(rowNum,1,rowNum,span);
+  const row = ws.getRow(rowNum);
+  row.height = 26;
+  for(let c=1;c<=span;c++){
+    const cell = row.getCell(c);
+    cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:XLS_GOLD} };
+    cell.font = { bold:true, size:13, color:{argb:"FFFFFFFF"} };
+    cell.alignment = { vertical:"middle" };
+  }
+}
+function xlsStyleSubtitleRow(ws, rowNum, colCount){
+  const span = Math.max(colCount,2);
+  ws.mergeCells(rowNum,1,rowNum,span);
+  ws.getRow(rowNum).getCell(1).font = { italic:true, size:10, color:{argb:XLS_DIM_TEXT} };
+}
+function xlsStyleFeriaBanner(ws, rowNum, colCount){
+  const span = Math.max(colCount,2);
+  ws.mergeCells(rowNum,1,rowNum,span);
+  const row = ws.getRow(rowNum);
+  row.height = 20;
+  for(let c=1;c<=span;c++){
+    const cell = row.getCell(c);
+    cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:XLS_GOLD_SOFT} };
+    cell.font = { bold:true, size:12, color:{argb:XLS_DARK_TEXT} };
+  }
+}
+function xlsStyleSectionRow(ws, rowNum, colCount){
+  const span = Math.max(colCount,2);
+  ws.mergeCells(rowNum,1,rowNum,span);
+  const row = ws.getRow(rowNum);
+  row.height = 18;
+  for(let c=1;c<=span;c++){
+    const cell = row.getCell(c);
+    cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:XLS_DARK} };
+    cell.font = { bold:true, size:10.5, color:{argb:XLS_GOLD_SOFT} };
+  }
+}
+function xlsStyleHeaderRow(ws, rowNum, colCount){
+  const row = ws.getRow(rowNum);
+  row.height = 18;
+  for(let c=1;c<=colCount;c++){
+    const cell = row.getCell(c);
+    cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:XLS_GOLD_SOFT} };
+    cell.font = { bold:true, color:{argb:XLS_DARK_TEXT} };
+    cell.border = { top:{style:"thin",color:{argb:XLS_GOLD}}, bottom:{style:"thin",color:{argb:XLS_GOLD}} };
+    cell.alignment = { vertical:"middle" };
+  }
+}
+function xlsStyleDataRow(ws, rowNum, colCount, idx){
+  const bg = idx%2===0 ? XLS_ROW_BASE : XLS_ROW_ALT;
+  const row = ws.getRow(rowNum);
+  for(let c=1;c<=colCount;c++){
+    const cell = row.getCell(c);
+    cell.fill = { type:"pattern", pattern:"solid", fgColor:{argb:bg} };
+    cell.border = { bottom:{style:"hair", color:{argb:XLS_BORDER_SOFT}} };
+  }
+}
+function xlsAddKV(ws, label, value, opts={}){
+  ws.addRow([label, value]);
+  const rowNum = ws.lastRow.number;
+  const row = ws.getRow(rowNum);
+  row.getCell(1).font = { bold: !!opts.bold, color:{argb: opts.bold?XLS_DARK_TEXT:"FF3A3226"} };
+  row.getCell(2).font = { bold:true, color:{argb:XLS_DARK_TEXT} };
+  if(typeof value === "number") row.getCell(2).alignment = { horizontal:"right" };
+  row.getCell(1).border = { bottom:{style:"hair", color:{argb:XLS_BORDER_SOFT}} };
+  row.getCell(2).border = { bottom:{style:"hair", color:{argb:XLS_BORDER_SOFT}} };
+  if(opts.money && typeof value === "number") row.getCell(2).numFmt = XLS_MONEY_FMT;
+  if(opts.percent && typeof value === "number") row.getCell(2).numFmt = "0.0%";
+  return rowNum;
+}
+function xlsBuildTableSheet(wb, {name, title, subtitle, headers, rows, moneyCols=[], widths, linkColIdx=null, linkTargets=null}){
+  const ws = wb.addWorksheet(name);
+  ws.properties.tabColor = { argb: XLS_TABCOLORS[name] || XLS_GOLD };
+  if(widths) ws.columns = widths.map(w=>({width:w}));
+  const colCount = headers.length;
+
+  ws.addRow([title]); xlsStyleTitleRow(ws, 1, colCount);
+  ws.addRow([subtitle||""]); xlsStyleSubtitleRow(ws, 2, colCount);
+  ws.addRow([]);
+  ws.addRow(headers); xlsStyleHeaderRow(ws, 4, colCount);
+
+  rows.forEach((row,i)=>{
+    ws.addRow(row);
+    const rowNum = 5+i;
+    xlsStyleDataRow(ws, rowNum, colCount, i);
+    moneyCols.forEach(ci=>{
+      const cell = ws.getRow(rowNum).getCell(ci);
+      if(typeof cell.value === "number") cell.numFmt = XLS_MONEY_FMT;
+    });
+    if(linkColIdx && linkTargets && linkTargets[i]){
+      const cell = ws.getRow(rowNum).getCell(linkColIdx);
+      cell.value = { text: String(cell.value||"Ver foto"), hyperlink: linkTargets[i] };
+      cell.font = { color:{argb:"FF3D6B7A"}, underline:true };
+    }
+  });
+
+  ws.views = [{ state:"frozen", ySplit:4 }];
+  if(rows.length) ws.autoFilter = { from:{row:4,column:1}, to:{row:4+rows.length,column:colCount} };
+  return ws;
+}
+
+/* =========================================================
+   EXPORTAR A EXCEL (.xlsx) — por mes, rango de fechas, una feria, o todo
+========================================================= */
+async function exportarExcel(){
+  if(typeof ExcelJS === "undefined"){ alert("El generador de Excel todavía está cargando, espera un segundo e inténtalo de nuevo."); return; }
   const { ferias, movs } = getMovsParaExportar();
   if(!movs.length){ alert("No hay movimientos para exportar con ese filtro."); return; }
 
-  const DIAS_SEMANA = ["Domingo","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"];
-  const diaSemana = (fechaISO)=>{ try{ return DIAS_SEMANA[new Date(fechaISO+"T00:00:00").getDay()]; }catch(e){ return ""; } };
   const feriaNombre = (id)=> (state.ferias.find(f=>f.id===id)||{}).nombre || "—";
   const sorted = [...movs].sort((a,b)=> a.fecha < b.fecha ? -1 : 1);
+  const tAll = computeTotals(movs);
 
   const fotoValor = (m)=>{
-    if(m.fotoDriveLink) return m.fotoDriveLink;
+    if(m.fotoDriveLink) return "Ver foto en Drive";
     if(m.fotoFactura) return "Sí (sin subir a Drive todavía)";
     return "";
   };
 
-  const hojaMovsHeader = ["Fecha","Día","Feria","Tipo","Categoría / Concepto","Trabajador","Medio de pago","Valor","Propina","Descripción","Foto (link de Drive)"];
-  const hojaMovs = [
-    hojaMovsHeader,
-    ...sorted.map(m=>[
-      m.fecha, diaSemana(m.fecha), feriaNombre(m.feriaId), m.tipo, m.categoria||"", m.trabajador||"",
-      m.medioPago||"", Number(m.valor)||0, Number(m.propina)||0, m.descripcion||"",
-      fotoValor(m),
-    ]),
-  ];
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "Control de Feria";
+  wb.created = new Date();
 
-  const resumenFerias = ferias.map(f=>{
-    const t = computeTotals(state.movimientos.filter(m=>m.feriaId===f.id));
-    return [f.nombre, f.fechaInicio, f.fechaCierre||"", getTrabajadores(f).length, t.ventas, t.gastos, t.utilidad, t.consignado, t.propinas];
+  /* ============ RESUMEN ============ */
+  const wsResumen = wb.addWorksheet("RESUMEN");
+  wsResumen.properties.tabColor = { argb: XLS_TABCOLORS.RESUMEN };
+  wsResumen.columns = [{width:34},{width:20}];
+  wsResumen.addRow(["CONTROL DE FERIA — RESUMEN"]); xlsStyleTitleRow(wsResumen,1,2);
+  wsResumen.addRow([`Generado el ${new Date().toLocaleDateString("es-CO")}`]); xlsStyleSubtitleRow(wsResumen,2,2);
+  wsResumen.addRow([]);
+
+  ferias.forEach(feria=>{
+    const movsFeria = movs.filter(m=>m.feriaId===feria.id);
+    const t = computeTotals(movsFeria);
+    const trabajadoresFeria = getTrabajadores(feria);
+    const propinaPersona = t.propinas/(trabajadoresFeria.length||1);
+    const efectivoGastos = movsFeria
+      .filter(m=>["Factura Mercado","Gasolina","Otro gasto","Pago a trabajador"].includes(m.tipo) && m.medioPago==="Efectivo")
+      .reduce((a,m)=>a+(Number(m.valor)||0),0);
+
+    wsResumen.addRow([`FERIA: ${feria.nombre}`]); xlsStyleFeriaBanner(wsResumen, wsResumen.lastRow.number, 2);
+    wsResumen.addRow([`Encargado: ${feria.encargado||"—"}  |  Del ${feria.fechaInicio} al ${feria.fechaCierre||"—"}  |  Trabajadores: ${trabajadoresFeria.length}`]);
+    xlsStyleSubtitleRow(wsResumen, wsResumen.lastRow.number, 2);
+    wsResumen.addRow([]);
+
+    wsResumen.addRow(["RESULTADO GENERAL",""]); xlsStyleSectionRow(wsResumen, wsResumen.lastRow.number, 2);
+    xlsAddKV(wsResumen, "Ventas totales", t.ventas, {money:true});
+    xlsAddKV(wsResumen, "Total gastos", t.gastos, {money:true});
+    xlsAddKV(wsResumen, "UTILIDAD", t.utilidad, {money:true, bold:true});
+    xlsAddKV(wsResumen, "Margen", t.ventas ? (t.utilidad/t.ventas) : 0, {percent:true});
+    xlsAddKV(wsResumen, "Efectivo esperado en caja", t.cajaEsperada, {money:true});
+    xlsAddKV(wsResumen, "Consignado al superior", t.consignado, {money:true});
+    xlsAddKV(wsResumen, "Gastos pagados en efectivo", efectivoGastos, {money:true});
+    xlsAddKV(wsResumen, "Total propinas recogidas", t.propinas, {money:true});
+    xlsAddKV(wsResumen, "Propina por persona", propinaPersona, {money:true});
+    wsResumen.addRow([]);
+
+    wsResumen.addRow(["DESGLOSE DE GASTOS",""]); xlsStyleSectionRow(wsResumen, wsResumen.lastRow.number, 2);
+    xlsAddKV(wsResumen, "Mercado (facturas)", t.mercado, {money:true});
+    xlsAddKV(wsResumen, "Gasolina", t.gasolina, {money:true});
+    xlsAddKV(wsResumen, "Otros gastos generales", t.otro, {money:true});
+    xlsAddKV(wsResumen, "Sueldos y pagos", t.pagos, {money:true});
+    xlsAddKV(wsResumen, "TOTAL GASTOS", t.gastos, {money:true, bold:true});
+    wsResumen.addRow([]);
+
+    wsResumen.addRow(["VENTAS POR MEDIO DE PAGO",""]); xlsStyleSectionRow(wsResumen, wsResumen.lastRow.number, 2);
+    xlsAddKV(wsResumen, "Efectivo", t.efectivoVentas, {money:true});
+    xlsAddKV(wsResumen, "Tarjeta", t.tarjetaVentas, {money:true});
+    xlsAddKV(wsResumen, "TOTAL", t.efectivoVentas+t.tarjetaVentas, {money:true, bold:true});
+    wsResumen.addRow([]);
+    wsResumen.addRow([]);
   });
-  const hojaResumen = [
-    ["Feria","Fecha inicio","Fecha cierre","Trabajadores","Ventas","Gastos","Utilidad","Consignado","Propinas"],
-    ...resumenFerias,
-  ];
 
-  const tGeneral = computeTotals(movs);
-  const rangoTexto = sorted.length ? `${sorted[sorted.length-1].fecha} → ${sorted[0].fecha}` : "";
-  const hojaTotales = [
-    ["Concepto","Valor"],
-    ["Rango de fechas incluido", rangoTexto],
-    ["Ventas", tGeneral.ventas],
-    ["Gastos", tGeneral.gastos],
-    ["Utilidad", tGeneral.utilidad],
-    ["Consignado", tGeneral.consignado],
-    ["Propinas", tGeneral.propinas],
-    ["Caja esperada (efectivo)", tGeneral.cajaEsperada],
-  ];
+  const rangoTexto = sorted.length ? `${sorted[0].fecha} → ${sorted[sorted.length-1].fecha}` : "";
+  wsResumen.addRow(["RESUMEN DEL PERIODO EXPORTADO",""]); xlsStyleSectionRow(wsResumen, wsResumen.lastRow.number, 2);
+  xlsAddKV(wsResumen, "Rango de fechas incluido", rangoTexto, {});
+  xlsAddKV(wsResumen, "Ventas", tAll.ventas, {money:true});
+  xlsAddKV(wsResumen, "Gastos", tAll.gastos, {money:true});
+  xlsAddKV(wsResumen, "Utilidad", tAll.utilidad, {money:true, bold:true});
+  xlsAddKV(wsResumen, "Consignado", tAll.consignado, {money:true});
+  xlsAddKV(wsResumen, "Propinas", tAll.propinas, {money:true});
+  xlsAddKV(wsResumen, "Caja esperada (efectivo)", tAll.cajaEsperada, {money:true});
+  xlsAddKV(wsResumen, "N° de ferias incluidas", ferias.length, {});
+  wsResumen.views = [{ state:"frozen", ySplit:2 }];
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaTotales), "Totales");
-  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hojaResumen), "Resumen por feria");
-  const wsMovs = XLSX.utils.aoa_to_sheet(hojaMovs);
-
-  // Convierte la columna de fotos en links reales cuando hay un link de Drive
-  const fotoColIdx = hojaMovsHeader.length - 1;
-  sorted.forEach((m, i)=>{
-    if(m.fotoDriveLink){
-      const addr = XLSX.utils.encode_cell({ r:i+1, c:fotoColIdx });
-      if(wsMovs[addr]) wsMovs[addr].l = { Target: m.fotoDriveLink, Tooltip: "Abrir foto en Google Drive" };
-    }
+  /* ============ FERIAS ============ */
+  xlsBuildTableSheet(wb, {
+    name:"FERIAS", title:"FERIAS", subtitle:`${ferias.length} feria(s) incluida(s) en este export`,
+    headers:["FERIA","ENCARGADO","FECHA INICIO","DÍAS ARMADA","DÍAS VENTA","FECHA CIERRE","N° TRABAJADORES","TRABAJADORES (nombres)"],
+    rows: ferias.map(f=>{
+      const trabs = getTrabajadores(f);
+      return [f.nombre, f.encargado||"", f.fechaInicio, Number(f.diasArmada)||0, Number(f.diasVenta)||0, f.fechaCierre||"", trabs.length, trabs.map(w=>w.nombre).join(", ")];
+    }),
+    widths:[20,16,13,11,10,13,15,34],
   });
-  wsMovs['!cols'] = [{wch:11},{wch:11},{wch:18},{wch:18},{wch:20},{wch:12},{wch:13},{wch:10},{wch:9},{wch:26},{wch:36}];
 
-  XLSX.utils.book_append_sheet(wb, wsMovs, "Movimientos");
+  /* ============ VENTAS ============ */
+  const ventas = sorted.filter(m=>m.tipo==="Venta");
+  xlsBuildTableSheet(wb, {
+    name:"VENTAS", title:"VENTAS",
+    subtitle:`Venta total: ${fmt(tAll.ventas)}   |   Efectivo: ${fmt(tAll.efectivoVentas)}   |   Tarjeta: ${fmt(tAll.tarjetaVentas)}`,
+    headers:["FECHA","MEDIO DE PAGO","VALOR","PROPINA","DESCRIPCIÓN","FERIA"],
+    rows: ventas.map(m=>[m.fecha, m.medioPago||"", Number(m.valor)||0, Number(m.propina)||0, m.descripcion||"", feriaNombre(m.feriaId)]),
+    moneyCols:[3,4], widths:[11,13,11,10,26,18],
+  });
+
+  /* ============ MERCADO ============ */
+  const mercado = sorted.filter(m=>m.tipo==="Factura Mercado");
+  xlsBuildTableSheet(wb, {
+    name:"MERCADO", title:"MERCADO", subtitle:`Total mercado: ${fmt(tAll.mercado)}   |   N° de facturas: ${mercado.length}`,
+    headers:["FECHA","VALOR","MEDIO DE PAGO","FOTO FACTURA","DESCRIPCIÓN","FERIA"],
+    rows: mercado.map(m=>[m.fecha, Number(m.valor)||0, m.medioPago||"", fotoValor(m), m.descripcion||"", feriaNombre(m.feriaId)]),
+    moneyCols:[2], widths:[11,11,13,20,26,18],
+    linkColIdx:4, linkTargets: mercado.map(m=>m.fotoDriveLink||null),
+  });
+
+  /* ============ GASOLINA ============ */
+  const gasolina = sorted.filter(m=>m.tipo==="Gasolina");
+  xlsBuildTableSheet(wb, {
+    name:"GASOLINA", title:"GASOLINA", subtitle:`Total gasolina: ${fmt(tAll.gasolina)}   |   N° de tanqueos: ${gasolina.length}`,
+    headers:["FECHA","VALOR","MEDIO DE PAGO","FOTO FACTURA","DESCRIPCIÓN","FERIA"],
+    rows: gasolina.map(m=>[m.fecha, Number(m.valor)||0, m.medioPago||"", fotoValor(m), m.descripcion||"", feriaNombre(m.feriaId)]),
+    moneyCols:[2], widths:[11,11,13,20,26,18],
+    linkColIdx:4, linkTargets: gasolina.map(m=>m.fotoDriveLink||null),
+  });
+
+  /* ============ OTROS GASTOS ============ */
+  const otros = sorted.filter(m=>m.tipo==="Otro gasto");
+  xlsBuildTableSheet(wb, {
+    name:"OTROS GASTOS", title:"OTROS GASTOS", subtitle:`Total otros gastos: ${fmt(tAll.otro)}   |   N° de gastos: ${otros.length}`,
+    headers:["FECHA","CATEGORÍA","VALOR","MEDIO DE PAGO","DESCRIPCIÓN","FERIA"],
+    rows: otros.map(m=>[m.fecha, m.categoria||"", Number(m.valor)||0, m.medioPago||"", m.descripcion||"", feriaNombre(m.feriaId)]),
+    moneyCols:[3], widths:[11,20,11,13,26,18],
+  });
+
+  /* ============ PROPINAS ============ */
+  const propinasMovs = sorted.filter(m=>m.tipo==="Venta" && (Number(m.propina)||0)>0);
+  xlsBuildTableSheet(wb, {
+    name:"PROPINAS", title:"PROPINAS", subtitle:`Total propinas: ${fmt(tAll.propinas)}`,
+    headers:["FECHA","PROPINA","MEDIO DE PAGO","DESCRIPCIÓN","FERIA"],
+    rows: propinasMovs.map(m=>[m.fecha, Number(m.propina)||0, m.medioPago||"", m.descripcion||"", feriaNombre(m.feriaId)]),
+    moneyCols:[2], widths:[11,11,13,26,18],
+  });
+
+  /* ============ PAGOS ============ */
+  const pagos = sorted.filter(m=>m.tipo==="Pago a trabajador");
+  xlsBuildTableSheet(wb, {
+    name:"PAGOS", title:"PAGOS A TRABAJADORES", subtitle:`Total pagado: ${fmt(tAll.pagos)}   |   N° de pagos: ${pagos.length}`,
+    headers:["FECHA","VALOR","MEDIO DE PAGO","TRABAJADOR","CONCEPTO","DESCRIPCIÓN","FERIA"],
+    rows: pagos.map(m=>[m.fecha, Number(m.valor)||0, m.medioPago||"", m.trabajador||"", m.categoria||"", m.descripcion||"", feriaNombre(m.feriaId)]),
+    moneyCols:[2], widths:[11,11,13,16,12,26,18],
+  });
+
+  /* ============ CONSIGNACIONES ============ */
+  const consig = sorted.filter(m=>m.tipo==="Consignación");
+  xlsBuildTableSheet(wb, {
+    name:"CONSIGNACIONES", title:"CONSIGNACIONES", subtitle:`Total consignado: ${fmt(tAll.consignado)}   |   N° de consignaciones: ${consig.length}`,
+    headers:["FECHA","VALOR","REFERENCIA / NOTA","DESCRIPCIÓN","FERIA"],
+    rows: consig.map(m=>[m.fecha, Number(m.valor)||0, "", m.descripcion||"", feriaNombre(m.feriaId)]),
+    moneyCols:[2], widths:[11,11,20,26,18],
+  });
+
+  /* ============ INVENTARIO (no la llena la app; queda lista para uso manual) ============ */
+  xlsBuildTableSheet(wb, {
+    name:"INVENTARIO", title:"INVENTARIO",
+    subtitle:"Esta hoja no se llena automáticamente desde la app — la app no controla stock. Complétala manualmente si la necesitas.",
+    headers:["PRODUCTO","CATEGORÍA","UNIDAD","PUESTO","CANT. INICIAL","ENTRADAS","SALIDAS","STOCK ACTUAL","COSTO UNITARIO","VALOR EN STOCK"],
+    rows: [],
+    widths:[20,14,10,10,12,10,10,12,14,14],
+  });
 
   const d = state.exportDraft;
   let filename = "control-feria";
@@ -1154,7 +1424,19 @@ function exportarExcel(){
   else filename += "-todo";
   filename += ".xlsx";
 
-  XLSX.writeFile(wb, filename);
+  try{
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }catch(err){
+    alert("No se pudo generar el Excel. Intenta de nuevo.");
+  }
 }
 
 function readExportDraftFromDOM(){
