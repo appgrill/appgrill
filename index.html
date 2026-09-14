@@ -674,7 +674,9 @@ function renderFeriaTab(){
   const movs = state.movimientos.filter(m=>m.feriaId===feria.id);
   const t = computeTotals(movs);
   const trabajadoresFeria = getTrabajadores(feria);
-  const propinaPersona = t.propinas / (trabajadoresFeria.length || 1);
+  const propinaRetencion = t.propinas * 0.10;
+  const propinaRepartible = t.propinas - propinaRetencion;
+  const propinaPersona = propinaRepartible / (trabajadoresFeria.length || 1);
   const sorted = [...movs].sort((a,b)=> a.fecha < b.fecha ? 1 : -1);
 
   body += `
@@ -689,10 +691,14 @@ function renderFeriaTab(){
       <div class="card">
         <div style="font-size:11px;color:var(--dim);">Propinas</div>
         <div style="font-size:20px;font-weight:600;font-family:'Space Grotesk',sans-serif;">${fmt(t.propinas)}</div>
-        <div style="font-size:11px;color:var(--dim);margin-top:2px;">${fmt(propinaPersona)} por persona · ${trabajadoresFeria.length} trabajador(es)</div>
-        ${t.propinas>0 ? `<div style="margin-top:8px; display:flex; flex-direction:column; gap:3px;">
+        ${t.propinas>0 ? `
+        <div class="row between" style="font-size:12px;margin-top:8px;"><span style="color:var(--dim);">10% (se descuenta)</span><span style="color:var(--red);">-${fmt(propinaRetencion)}</span></div>
+        <div class="row between" style="font-size:12px;margin-top:3px;"><span style="color:var(--dim);">Resto a repartir (90%)</span><span style="font-weight:600;">${fmt(propinaRepartible)}</span></div>
+        <div class="divider"></div>
+        <div style="font-size:11px;color:var(--dim);margin-bottom:2px;">${fmt(propinaPersona)} por persona · ${trabajadoresFeria.length} trabajador(es)</div>
+        <div style="margin-top:8px; display:flex; flex-direction:column; gap:3px;">
           ${trabajadoresFeria.map(w=>`<div class="row between" style="font-size:12px;"><span style="color:var(--dim);">${escapeHtml(w.nombre)}</span><span>${fmt(propinaPersona)}</span></div>`).join("")}
-        </div>` : ""}
+        </div>` : `<div style="font-size:11px;color:var(--dim);margin-top:2px;">${fmt(propinaPersona)} por persona · ${trabajadoresFeria.length} trabajador(es)</div>`}
         <div class="divider"></div>
         <div style="font-size:11px;color:var(--dim);margin-bottom:4px;">Ventas por medio de pago</div>
         <div class="row between" style="font-size:13px;"><span style="color:var(--dim);">Efectivo</span><span>${fmt(t.efectivoVentas)}</span></div>
@@ -1280,7 +1286,9 @@ async function exportarExcel(){
     const movsFeria = movs.filter(m=>m.feriaId===feria.id);
     const t = computeTotals(movsFeria);
     const trabajadoresFeria = getTrabajadores(feria);
-    const propinaPersona = t.propinas/(trabajadoresFeria.length||1);
+    const propinaRetencion = t.propinas * 0.10;
+    const propinaRepartible = t.propinas - propinaRetencion;
+    const propinaPersona = propinaRepartible/(trabajadoresFeria.length||1);
     const efectivoGastos = movsFeria
       .filter(m=>["Factura Mercado","Gasolina","Otro gasto","Pago a trabajador"].includes(m.tipo) && m.medioPago==="Efectivo")
       .reduce((a,m)=>a+(Number(m.valor)||0),0);
@@ -1299,6 +1307,8 @@ async function exportarExcel(){
     xlsAddKV(wsResumen, "Consignado al superior", t.consignado, {money:true});
     xlsAddKV(wsResumen, "Gastos pagados en efectivo", efectivoGastos, {money:true});
     xlsAddKV(wsResumen, "Total propinas recogidas", t.propinas, {money:true});
+    xlsAddKV(wsResumen, "10% retenido", propinaRetencion, {money:true});
+    xlsAddKV(wsResumen, "Resto a repartir (90%)", propinaRepartible, {money:true});
     xlsAddKV(wsResumen, "Propina por persona", propinaPersona, {money:true});
     wsResumen.addRow([]);
 
