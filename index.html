@@ -372,6 +372,9 @@ let state = {
   tempMovDraft: { fecha:"", valor:"", medioPago:"", propina:"", categoria:"", trabajador:"", descripcion:"" },
   tempTrabajadores: [""], // nombres de trabajadores mientras el formulario de feria está abierto
   tempFeriaDraft: { nombre:"", encargado:"", fechaInicio:"", fechaCierre:"", diasArmada:1, diasVenta:3 },
+  editTrabajadoresFeriaId: null, // id de la feria cuyo borrador de trabajadores está cargado
+  tempEditTrabajadores: [],      // [{id, nombre}] mientras se edita la lista en la pestaña "Trabajadores"
+  tempEditTrabajadoresDesde: "", // fecha desde la que aplica el cambio que se está editando
   lightboxPhoto: null,  // dataURL de la foto mostrada en el visor
   lightboxMovId: null,
   saveError: false,
@@ -413,6 +416,21 @@ function getTrabajadores(feria){
   if(feria.trabajadores && feria.trabajadores.length) return feria.trabajadores;
   const n = feria.nTrabajadores || 1;
   return Array.from({length:n}, (_,i)=>({ id:"legacy_"+i, nombre:"Trabajador "+(i+1) }));
+}
+
+// Devuelve la lista de trabajadores que estaban vigentes en una feria en una fecha
+// específica, según el historial de cambios (feria.trabajadoresHistorial). Un cambio
+// aplica desde su fecha "desde" hacia adelante, hasta que llegue otro cambio más
+// reciente — así no hay que marcar nada día por día, solo registrar el cambio una vez.
+function getTrabajadoresEnFecha(feria, fecha){
+  const hist = feria.trabajadoresHistorial;
+  if(!hist || !hist.length) return getTrabajadores(feria);
+  let vigente = null;
+  for(const h of hist){
+    if(h.desde <= fecha && (!vigente || h.desde > vigente.desde)) vigente = h;
+  }
+  if(!vigente) vigente = hist.reduce((a,b)=> a.desde < b.desde ? a : b); // fecha anterior a todo el historial: usa el cambio más antiguo
+  return vigente.trabajadores;
 }
 
 const ICONS = {
@@ -468,7 +486,7 @@ function render(){
   const app = document.getElementById("app");
   app.innerHTML = `
     ${renderHeader()}
-    ${state.view==="feria" ? renderFeriaTab() : renderMensualTab()}
+    ${state.view==="feria" ? renderFeriaTab() : state.view==="mensual" ? renderMensualTab() : renderTrabajadoresTab()}
     ${renderLightbox()}
   `;
   attachEvents();
@@ -499,6 +517,7 @@ function renderHeader(){
       <div class="tabs">
         <button class="${state.view==='feria'?'active':''}" data-view="feria">Feria</button>
         <button class="${state.view==='mensual'?'active':''}" data-view="mensual">Resumen mensual</button>
+        <button class="${state.view==='trabajadores'?'active':''}" data-view="trabajadores">Modificar trabajadores</button>
       </div>
     </div>
   </div>`;
@@ -724,6 +743,96 @@ function renderFeriaTab(){
   return body;
 }
 
+function renderTrabajadoresTab(){
+  let body = renderFeriaSelector() + renderFeriaForm();
+  const feria = state.ferias.find(f=>f.id===state.feriaId);
+
+  if(!feria){
+    body += `<div class="empty">Elige o crea una feria para modificar sus trabajadores.</div>`;
+    return body;
+  }
+
+  // Si cambiamos de feria (o es la primera vez que abrimos esta pestaña), cargamos
+  // un borrador editable a partir de los trabajadores reales de esa feria.
+  if(state.editTrabajadoresFeriaId !== feria.id){
+    state.tempEditTrabajadores = getTrabajadores(feria).map(w=>({ id:w.id, nombre:w.nombre }));
+    state.editTrabajadoresFeriaId = feria.id;
+    state.tempEditTrabajadoresDesde = todayISO();
+  }
+  const list = state.tempEditTrabajadores.length ? state.tempEditTrabajadores : [{id:null, nombre:""}];
+  const historial = [...(feria.trabajadoresHistorial||[])].sort((a,b)=> a.desde<b.desde?1:-1);
+
+  body += `
+  <div class="card">
+    <h3 style="font-size:15px;margin-bottom:4px;">👥 Trabajadores de "${escapeHtml(feria.nombre)}"</h3>
+    <p class="photo-hint" style="margin:2px 0 14px;">Agrega o quita gente solo cuando cambie de verdad — el cambio queda fijo desde la fecha que elijas hacia adelante, sin tener que repetirlo cada día. Los días anteriores a esa fecha no se ven afectados.</p>
+    <div style="display:flex; flex-direction:column; gap:8px;">
+      ${list.map((w,i)=>`
+        <div class="row" style="gap:8px;">
+          <input class="edit-trabajador-input" data-idx="${i}" placeholder="Nombre del trabajador ${i+1}" value="${escapeHtml(w.nombre)}" style="flex:1;" />
+          ${list.length>1 ? `<button type="button" class="btn-danger" data-del-edit-trabajador="${i}">🗑</button>` : ""}
+        </div>`).join("")}
+      <button type="button" class="btn btn-ghost" id="btnAgregarEditTrabajador" style="align-self:flex-start;">+ Agregar trabajador</button>
+    </div>
+    <label class="field" style="margin-top:14px; max-width:220px;">
+      <span>Este cambio aplica desde</span>
+      <input type="date" id="editTrabajadoresDesde" value="${state.tempEditTrabajadoresDesde || todayISO()}" />
+    </label>
+    <div class="row" style="justify-content:flex-end; margin-top:16px;">
+      <button class="btn btn-solid" id="btnGuardarTrabajadores">Guardar cambios</button>
+    </div>
+  </div>
+  ${historial.length>1 ? `
+  <div class="card" style="margin-top:14px;">
+    <div style="font-size:12px;color:var(--dim);margin-bottom:8px;">📜 Historial de cambios</div>
+    ${historial.map(h=>`
+      <div class="row between" style="font-size:12.5px;margin-bottom:5px;">
+        <span style="color:var(--dim);">Desde ${h.desde}</span>
+        <span>${h.trabajadores.map(w=>escapeHtml(w.nombre)).join(", ")}</span>
+      </div>`).join("")}
+  </div>` : ``}
+  <div style="font-size:13px;color:var(--dim);margin:18px 0 8px;">🍬 Cómo quedan las propinas por día (automático)</div>
+  ${renderPropinasPorDiaPreview(feria, state.movimientos.filter(m=>m.feriaId===feria.id))}`;
+  return body;
+}
+
+// Vista de solo lectura: agrupa las propinas de la feria por día y muestra cuántos
+// trabajadores estaban vigentes ese día (según el historial de cambios) y cuánto le
+// toca a cada uno. No requiere marcar nada — se calcula solo.
+function renderPropinasPorDiaPreview(feria, movs){
+  const porDia = {};
+  movs.filter(m=>m.tipo==="Venta" && (Number(m.propina)||0)>0).forEach(m=>{
+    porDia[m.fecha] = (porDia[m.fecha]||0) + (Number(m.propina)||0);
+  });
+  const dias = Object.keys(porDia).sort((a,b)=> a<b?1:-1);
+
+  if(!dias.length){
+    return `<div class="empty">Todavía no hay propinas registradas en esta feria.</div>`;
+  }
+
+  return dias.map(fecha=>{
+    const totalDia = porDia[fecha];
+    const trabajadoresDia = getTrabajadoresEnFecha(feria, fecha);
+    const retencion = totalDia * 0.10;
+    const repartible = totalDia - retencion;
+    const porPersona = repartible / (trabajadoresDia.length || 1);
+    return `
+    <div class="card" style="margin-bottom:10px;">
+      <div class="row between" style="margin-bottom:8px;">
+        <div style="font-size:13.5px;font-weight:600;">${fecha}</div>
+        <div style="font-size:15px;font-weight:600;font-family:'Space Grotesk',sans-serif;">${fmt(totalDia)}</div>
+      </div>
+      <div class="row between" style="font-size:12px;"><span style="color:var(--dim);">10% (se descuenta)</span><span style="color:var(--red);">-${fmt(retencion)}</span></div>
+      <div class="row between" style="font-size:12px;margin-top:2px;"><span style="color:var(--dim);">Resto a repartir (90%)</span><span style="font-weight:600;">${fmt(repartible)}</span></div>
+      <div class="divider"></div>
+      <div style="font-size:11px;color:var(--dim);margin-bottom:4px;">${fmt(porPersona)} por persona · ${trabajadoresDia.length} trabajador(es) ese día</div>
+      <div style="display:flex; flex-direction:column; gap:3px;">
+        ${trabajadoresDia.map(w=>`<div class="row between" style="font-size:12px;"><span style="color:var(--dim);">${escapeHtml(w.nombre)}</span><span>${fmt(porPersona)}</span></div>`).join("")}
+      </div>
+    </div>`;
+  }).join("");
+}
+
 function kpi(icon,label,value,color,sub){
   return `<div class="card">
     <div class="kpi-label">${icon} ${label}</div>
@@ -927,6 +1036,63 @@ function attachEvents(){
     };
   });
 
+  // --- Pestaña "Trabajadores": modificar la lista de trabajadores de la feria actual ---
+  document.querySelectorAll(".edit-trabajador-input").forEach(inp=>{
+    inp.oninput = ()=>{ state.tempEditTrabajadores[Number(inp.dataset.idx)].nombre = inp.value; };
+  });
+  const editTrabajadoresDesdeInput = document.getElementById("editTrabajadoresDesde");
+  if(editTrabajadoresDesdeInput) editTrabajadoresDesdeInput.oninput = ()=>{ state.tempEditTrabajadoresDesde = editTrabajadoresDesdeInput.value; };
+  document.querySelectorAll("[data-del-edit-trabajador]").forEach(b=>{
+    b.onclick = ()=>{
+      state.tempEditTrabajadores.splice(Number(b.dataset.delEditTrabajador), 1);
+      if(!state.tempEditTrabajadores.length) state.tempEditTrabajadores = [{id:null, nombre:""}];
+      render();
+    };
+  });
+  const btnAgregarEditTrabajador = document.getElementById("btnAgregarEditTrabajador");
+  if(btnAgregarEditTrabajador) btnAgregarEditTrabajador.onclick = ()=>{
+    state.tempEditTrabajadores.push({id:null, nombre:""});
+    render();
+  };
+  const btnGuardarTrabajadores = document.getElementById("btnGuardarTrabajadores");
+  if(btnGuardarTrabajadores) btnGuardarTrabajadores.onclick = ()=>{
+    const feria = state.ferias.find(f=>f.id===state.feriaId);
+    if(!feria) return;
+    const desdeInput = document.getElementById("editTrabajadoresDesde");
+    const vigenteDesde = (desdeInput && desdeInput.value) || todayISO();
+    const nombresUsados = new Set();
+    const nuevos = state.tempEditTrabajadores
+      .map(w=>({ id: w.id || uid(), nombre: (w.nombre||"").trim() }))
+      .filter(w=>{
+        if(!w.nombre) return false;
+        const clave = w.nombre.toLowerCase();
+        if(nombresUsados.has(clave)) return false;
+        nombresUsados.add(clave);
+        return true;
+      });
+    if(!nuevos.length){ alert("Agrega al menos un trabajador antes de guardar."); return; }
+
+    // Si esta feria todavía no tiene historial de cambios, la lista que tenía ANTES
+    // de este guardado se conserva como el punto de partida (desde el inicio de la
+    // feria), y este guardado se agrega como el siguiente cambio a partir de la
+    // fecha elegida — así los días anteriores no se ven afectados.
+    if(!feria.trabajadoresHistorial || !feria.trabajadoresHistorial.length){
+      const anteriores = getTrabajadores(feria);
+      feria.trabajadoresHistorial = [{ desde: feria.fechaInicio || vigenteDesde, trabajadores: anteriores }];
+    }
+    const idx = feria.trabajadoresHistorial.findIndex(h=>h.desde===vigenteDesde);
+    if(idx>=0) feria.trabajadoresHistorial[idx] = { desde:vigenteDesde, trabajadores:nuevos };
+    else feria.trabajadoresHistorial.push({ desde:vigenteDesde, trabajadores:nuevos });
+    feria.trabajadoresHistorial.sort((a,b)=> a.desde<b.desde?-1:1);
+
+    feria.trabajadores = nuevos;
+    feria.nTrabajadores = nuevos.length;
+    state.tempEditTrabajadores = nuevos.map(w=>({ id:w.id, nombre:w.nombre }));
+    state.tempEditTrabajadoresDesde = vigenteDesde;
+    persist();
+    render();
+  };
+
   const saveFeriaForm = document.getElementById("saveFeriaForm");
   if(saveFeriaForm) saveFeriaForm.onclick = ()=>{
     readFeriaDraftFromDOM();
@@ -946,6 +1112,7 @@ function attachEvents(){
       fechaCierre,
       trabajadores,
       nTrabajadores: trabajadores.length || 1,
+      trabajadoresHistorial: [{ desde: fechaInicio, trabajadores }],
     };
     state.ferias.push(feria);
     state.feriaId = feria.id;
@@ -1288,7 +1455,6 @@ async function exportarExcel(){
     const trabajadoresFeria = getTrabajadores(feria);
     const propinaRetencion = t.propinas * 0.10;
     const propinaRepartible = t.propinas - propinaRetencion;
-    const propinaPersona = propinaRepartible/(trabajadoresFeria.length||1);
     const efectivoGastos = movsFeria
       .filter(m=>["Factura Mercado","Gasolina","Otro gasto","Pago a trabajador"].includes(m.tipo) && m.medioPago==="Efectivo")
       .reduce((a,m)=>a+(Number(m.valor)||0),0);
@@ -1309,7 +1475,8 @@ async function exportarExcel(){
     xlsAddKV(wsResumen, "Total propinas recogidas", t.propinas, {money:true});
     xlsAddKV(wsResumen, "10% retenido", propinaRetencion, {money:true});
     xlsAddKV(wsResumen, "Resto a repartir (90%)", propinaRepartible, {money:true});
-    xlsAddKV(wsResumen, "Propina por persona", propinaPersona, {money:true});
+    wsResumen.addRow(["El reparto por persona varía cada día según quién trabajó — ver hoja PROPINAS",""]);
+    xlsStyleSubtitleRow(wsResumen, wsResumen.lastRow.number, 2);
     wsResumen.addRow([]);
 
     wsResumen.addRow(["DESGLOSE DE GASTOS",""]); xlsStyleSectionRow(wsResumen, wsResumen.lastRow.number, 2);
@@ -1390,13 +1557,35 @@ async function exportarExcel(){
     moneyCols:[3], widths:[11,20,11,13,26,18],
   });
 
-  /* ============ PROPINAS ============ */
+  /* ============ PROPINAS (agrupadas por día, con el reparto real de cada día) ============ */
   const propinasMovs = sorted.filter(m=>m.tipo==="Venta" && (Number(m.propina)||0)>0);
+  const propinasPorDiaFeria = {};
+  propinasMovs.forEach(m=>{
+    const key = m.feriaId+"||"+m.fecha;
+    propinasPorDiaFeria[key] = (propinasPorDiaFeria[key]||0) + (Number(m.propina)||0);
+  });
+  const propinasRows = Object.keys(propinasPorDiaFeria)
+    .sort((a,b)=>{
+      const fa = a.split("||")[1], fb = b.split("||")[1];
+      return fa < fb ? -1 : (fa > fb ? 1 : 0);
+    })
+    .map(key=>{
+      const [feriaId, fecha] = key.split("||");
+      const feria = state.ferias.find(f=>f.id===feriaId);
+      const total = propinasPorDiaFeria[key];
+      const trabajadoresDia = feria ? getTrabajadoresEnFecha(feria, fecha) : [];
+      const nombres = trabajadoresDia.map(w=>w.nombre).join(", ");
+      const retencion = total * 0.10;
+      const repartible = total - retencion;
+      const porPersona = repartible / (trabajadoresDia.length || 1);
+      return [fecha, total, retencion, repartible, trabajadoresDia.length, porPersona, nombres, feriaNombre(feriaId)];
+    });
   xlsBuildTableSheet(wb, {
-    name:"PROPINAS", title:"PROPINAS", subtitle:`Total propinas: ${fmt(tAll.propinas)}`,
-    headers:["FECHA","PROPINA","MEDIO DE PAGO","DESCRIPCIÓN","FERIA"],
-    rows: propinasMovs.map(m=>[m.fecha, Number(m.propina)||0, m.medioPago||"", m.descripcion||"", feriaNombre(m.feriaId)]),
-    moneyCols:[2], widths:[11,11,13,26,18],
+    name:"PROPINAS", title:"PROPINAS",
+    subtitle:`Total propinas: ${fmt(tAll.propinas)}   |   Se descuenta 10% y el resto se reparte según los trabajadores vigentes cada día`,
+    headers:["FECHA","PROPINA TOTAL","10% RETENIDO","RESTO A REPARTIR","N° TRABAJADORES","PROPINA POR PERSONA","TRABAJADORES","FERIA"],
+    rows: propinasRows,
+    moneyCols:[2,3,4,6], widths:[11,13,13,15,14,16,32,18],
   });
 
   /* ============ PAGOS ============ */
